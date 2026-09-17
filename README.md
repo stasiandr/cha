@@ -11,16 +11,17 @@ a child window over the content area; only the active tab's window is visible.
 ## Build
 
 ```
-cmake -S . -B build -G Ninja
-ninja -C build cha
+scripts/bundle.sh          # → build/cha.app
+open build/cha.app
 ```
 
-CEF 152 lives in `third_party/cef` (not in the repo). Requires cmake and ninja.
+The script fetches the CEF 152 binary distribution into `third_party/cef`
+(~300 MB, not in the repo) on the first run, then builds with cmake and ninja.
 
 ## Run
 
 ```
-build/src/Release/cha.app/Contents/MacOS/cha
+open build/cha.app
 ```
 
 The app is unsigned, so Chromium runs with `--use-mock-keychain` and encrypts
