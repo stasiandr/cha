@@ -62,6 +62,23 @@ enum TestScenarios {
             at(16) { controller.selectSpace(controller.spaces[1].id) }
             at(18) { describe("space 2", controller); shot("test-organize") }
 
+        case "passwordsui":
+            at(2) { controller.newTab(url: "chrome://password-manager/settings") }
+            at(6) { shot("test-pwui") }
+            at(8) {
+                controller.activeTab?.executeJavaScript(
+                    "document.title = 'PWUI ' + document.body.innerText"
+                        + ".replace(/\\n/g, ' | ').slice(0, 400);")
+            }
+            at(10) { NSLog("PWUI title=%@", controller.activeTab?.title ?? "-") }
+            at(11) {
+                controller.navigate(
+                    to: "data:text/html,<h1>file dialog test</h1>"
+                        + "<input id=f type=file style='font-size:20px'>")
+            }
+            at(14) { controller.activeTab?.clickAt(x: 68, y: 78) }
+            at(17) { shot("test-filedialog") }
+
         case "command":
             at(3) { controller.openCommandBar(mode: .newTab) }
             at(4) { controller.commandQuery = "news.ycombinator.com" }
@@ -124,6 +141,7 @@ enum TestScenarios {
     }
 
     private static func shot(_ name: String) {
+        NSApp.activate(ignoringOtherApps: true)
         let process = Process()
         process.launchPath = "/usr/sbin/screencapture"
         process.arguments = ["-x", "build/\(name).png"]

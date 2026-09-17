@@ -84,7 +84,10 @@ enum Persistence {
 func normalizedURL(from input: String) -> String {
     let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
     if text.isEmpty { return "about:blank" }
-    if text.contains("://") { return text }
+    // Any scheme goes through as is: https://, but also chrome:, data:, about:.
+    if text.range(of: "^[a-zA-Z][a-zA-Z0-9+.-]*:", options: .regularExpression) != nil {
+        return text
+    }
     let looksLikeHost =
         !text.contains(" ") && text.contains(".") && !text.hasSuffix(".")
     if looksLikeHost { return "https://" + text }

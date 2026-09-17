@@ -28,6 +28,10 @@ enum MainMenu {
         file.add("Empty Tab", "t", target, #selector(MenuTarget.emptyTab), [.command, .shift])
         file.addItem(.separator())
         file.add("New Space", "n", target, #selector(MenuTarget.newSpace), [.command, .shift])
+        file.addItem(.separator())
+        file.add("Passwords…", "", target, #selector(MenuTarget.passwords), [])
+        file.add(
+            "Import Passwords…", "", target, #selector(MenuTarget.importPasswords), [])
         bar.addItem(submenu: file, title: "File")
 
         let edit = NSMenu(title: "Edit")
@@ -113,6 +117,13 @@ final class MenuTarget: NSObject {
         controller?.activateTabAtIndex(sender.tag)
     }
     @objc func newSpace() { controller?.addSpace() }
+    // Chromium's own password manager, reachable without a toolbar.
+    @objc func passwords() {
+        controller?.newTab(url: "chrome://password-manager/passwords")
+    }
+    @objc func importPasswords() {
+        controller?.newTab(url: "chrome://password-manager/settings")
+    }
     @objc func toggleSidebar() { controller?.toggleSidebar() }
     @objc func reload() { controller?.reload() }
     @objc func goBack() { controller?.goBack() }
