@@ -11,7 +11,8 @@ import SwiftUI
 // this window, below a 40 pt bar with the site and the button.
 final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate, ChaTabDelegate {
     static var open: [LittleWindowController] = []
-    static let barHeight: CGFloat = 40
+    // One line with the traffic lights, whose centres are 22 pt down.
+    static let barHeight: CGFloat = 44
     static let inset: CGFloat = 8
 
     @Published var url: String
@@ -59,8 +60,11 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         window.isMovableByWindowBackground = true
         window.minSize = NSSize(width: 420, height: 300)
         window.delegate = self
-        // It floats over the app the link came from until it is dealt with.
+        // It floats over the app the link came from until it is dealt with,
+        // on whatever desktop that is: a full-screen app's included, rather
+        // than taking you to cha's own desktop.
         window.level = .floating
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
 
         let background = NSVisualEffectView()
         background.material = .sidebar
@@ -218,6 +222,7 @@ struct LittleBar: View {
             .frame(width: 14, height: 14)
             Text(displayHost(controller.url) ?? controller.url)
                 .font(.system(size: 13, weight: .medium))
+                .uiFrame("littleHost")
                 .lineLimit(1)
                 .truncationMode(.middle)
             if !controller.title.isEmpty {
@@ -243,9 +248,16 @@ struct LittleBar: View {
             }
             .buttonStyle(.plain)
             .help("Move this page into the main window (⌘O)")
+            .uiFrame("littleOpen")
         }
         .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // A 44 pt line from the top, centred on the traffic lights (22 pt).
+        .frame(maxWidth: .infinity)
+        .frame(height: LittleWindowController.barHeight)
+        .frame(maxHeight: .infinity, alignment: .top)
+        // The bar sits in the title bar's place: no extra inset for it.
+        .ignoresSafeArea()
+        .uiFrame("littleBar")
     }
 }
 

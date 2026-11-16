@@ -305,6 +305,22 @@ enum TestScenarios {
                     } ?? false,
                     little.map { NSStringFromRect($0.tab.nativeWindow?.frame ?? .zero) + " want " + NSStringFromRect($0.pageScreenRect) } ?? "-")
                 SpaceChecks.check("the main window is left as it was", controller.activeSpace.tabs.count == tabsBefore)
+                // The bar's contents sit on the traffic lights' line, above
+                // the page (SwiftUI's frames are top-left based, in points).
+                let host = UIFrames.frames["littleHost"] ?? .zero
+                let open = UIFrames.frames["littleOpen"] ?? .zero
+                SpaceChecks.check(
+                    "the little window's bar is on the traffic lights' line",
+                    abs(host.midY - 22) < 2 && abs(open.midY - 22) < 2,
+                    "host \(host.midY), button \(open.midY)")
+                SpaceChecks.check(
+                    "and above the page", host.maxY <= LittleWindowController.barHeight
+                        && open.maxY <= LittleWindowController.barHeight, "\(host.maxY) \(open.maxY)")
+                SpaceChecks.check(
+                    "it opens on the desktop in use, full-screen apps included",
+                    little?.window.collectionBehavior.contains(.fullScreenAuxiliary) == true
+                        && little?.window.collectionBehavior.contains(.moveToActiveSpace) == true)
+                if let little { TestScenarios.shotWindow(little.window, "little-window") }
                 SpaceChecks.check(
                     "the page's window can't be moved or resized on its own",
                     little.map { l in
@@ -536,6 +552,16 @@ enum TestScenarios {
         process.arguments = ["-x", "-R\(rect)", "build/shots/\(name).png"]
         try? process.run()
         process.waitUntilExit()
+    }
+
+    // Any window's own views, as a picture (no Chromium pixels).
+    static func shotWindow(_ window: NSWindow, _ name: String) {
+        guard let content = window.contentView,
+            let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds)
+        else { return }
+        content.cacheDisplay(in: content.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?
+            .write(to: URL(fileURLWithPath: "build/shots/\(name).png"))
     }
 
     // A picture of the main window drawn from its views, with the active
