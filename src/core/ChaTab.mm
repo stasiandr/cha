@@ -5,6 +5,10 @@
 
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+#include "include/cef_command_handler.h"
+#include "include/cef_command_ids.h"
+#include "include/cef_context_menu_handler.h"
+#include "include/cef_request_handler.h"
 #include "include/cef_download_handler.h"
 #include "include/cef_find_handler.h"
 #include "include/views/cef_browser_view.h"
@@ -23,6 +27,7 @@
 - (void)cefWindowDestroyed;
 - (void)cefBrowserClosed;
 - (void)cefRequestsNewTab:(NSString*)url;
+- (void)cefRequestsNewTab:(NSString*)url background:(BOOL)background;
 - (void)cefDidFinishLoad;
 - (void)cefChanged;
 @end
@@ -104,6 +109,9 @@ NSString* DownloadPath(NSString* suggested) {
 }
 
 class TabHost : public CefClient,
+                public CefCommandHandler,
+                public CefContextMenuHandler,
+                public CefRequestHandler,
                 public CefDisplayHandler,
                 public CefDownloadHandler,
                 public CefFindHandler,
@@ -124,6 +132,93 @@ class TabHost : public CefClient,
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<CefFindHandler> GetFindHandler() override { return this; }
+  CefRefPtr<CefCommandHandler> GetCommandHandler() override { return this; }
+  CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; }
+  CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
+
+  // Links that ask for a new tab or window become cha's tabs; otherwise
+  // Chromium opens a browser window of its own, tab strip and all.
+
+  // CefContextMenuHandler: "Open Link in New Tab / Window / …".
+  bool OnContextMenuCommand(CefRefPtr<CefBrowser>,
+                            CefRefPtr<CefFrame>,
+                            CefRefPtr<CefContextMenuParams> params,
+                            int command_id,
+                            EventFlags) override {
+    switch (command_id) {
+      case IDC_CONTENT_CONTEXT_OPENLINKNEWTAB:
+      case IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW:
+      case IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD:
+      case IDC_CONTENT_CONTEXT_OPENLINKINPROFILE:
+      case IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW: {
+        NSString* url = ToNSString(params->GetLinkUrl());
+        if (url.length == 0) {
+          return false;
+        }
+        BOOL background = command_id == IDC_CONTENT_CONTEXT_OPENLINKNEWTAB;
+        ChaTab* tab = tab_;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [tab cefRequestsNewTab:url background:background];
+        });
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  // CefRequestHandler: ⌘-click (background), ⇧⌘-click and middle click.
+  bool OnOpenURLFromTab(CefRefPtr<CefBrowser>,
+                        CefRefPtr<CefFrame>,
+                        const CefString& target_url,
+                        WindowOpenDisposition disposition,
+                        bool) override {
+    switch (disposition) {
+      case CEF_WOD_NEW_FOREGROUND_TAB:
+      case CEF_WOD_NEW_BACKGROUND_TAB:
+      case CEF_WOD_NEW_WINDOW:
+      case CEF_WOD_NEW_POPUP:
+      case CEF_WOD_OFF_THE_RECORD: {
+        NSString* url = ToNSString(target_url);
+        BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
+        ChaTab* tab = tab_;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [tab cefRequestsNewTab:url background:background];
+        });
+        return true;  // Cancelled here: cha opens it.
+      }
+      default:
+        return false;
+    }
+  }
+
+  // CefCommandHandler: Chrome's own commands that would open its windows or
+  // tab strip (its shortcuts, when a page has the keyboard) do nothing; cha's
+  // menu has its own versions.
+  bool OnChromeCommand(CefRefPtr<CefBrowser>, int command_id,
+                       cef_window_open_disposition_t) override {
+    switch (command_id) {
+      case IDC_NEW_WINDOW:
+      case IDC_NEW_INCOGNITO_WINDOW:
+      case IDC_NEW_TAB:
+      case IDC_NEW_TAB_TO_RIGHT:
+      case IDC_DUPLICATE_TAB:
+      case IDC_RESTORE_TAB:
+      case IDC_OPEN_IN_PWA_WINDOW:
+      case IDC_SELECT_NEXT_TAB:
+      case IDC_SELECT_PREVIOUS_TAB:
+      case IDC_EXIT:
+      case IDC_CLOSE_WINDOW:
+      case IDC_SHOW_HISTORY:
+      case IDC_SHOW_BOOKMARK_MANAGER:
+      case IDC_SHOW_DOWNLOADS:
+      case IDC_OPTIONS:
+      case IDC_OPEN_FILE:
+        return true;
+      default:
+        return false;
+    }
+  }
   CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
 
   // CefDownloadHandler: the app's own list instead of Chrome's bubble,
@@ -233,7 +328,7 @@ class TabHost : public CefClient,
                      int,
                      const CefString& target_url,
                      const CefString&,
-                     WindowOpenDisposition,
+                     WindowOpenDisposition disposition,
                      bool,
                      const CefPopupFeatures&,
                      CefWindowInfo&,
@@ -241,10 +336,12 @@ class TabHost : public CefClient,
                      CefBrowserSettings&,
                      CefRefPtr<CefDictionaryValue>&,
                      bool*) override {
+    // ⌘-click on a link arrives here too, as a background tab.
     NSString* url = ToNSString(target_url);
+    BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
     ChaTab* tab = tab_;
     dispatch_async(dispatch_get_main_queue(), ^{
-      [tab cefRequestsNewTab:url];
+      [tab cefRequestsNewTab:url background:background];
     });
     return true;  // Handled: the app opens its own tab instead.
   }
@@ -383,6 +480,10 @@ CefRect ScreenRectToCef(NSRect frame) {
 }
 
 - (void)clickAtX:(int)x y:(int)y {
+  [self clickAtX:x y:y modifiers:0];
+}
+
+- (void)clickAtX:(int)x y:(int)y modifiers:(uint32_t)modifiers {
   auto browser = _host ? _host->browser() : nullptr;
   if (!browser) {
     return;
@@ -390,6 +491,7 @@ CefRect ScreenRectToCef(NSRect frame) {
   CefMouseEvent event;
   event.x = x;
   event.y = y;
+  event.modifiers = modifiers;
   auto host = browser->GetHost();
   host->SendMouseMoveEvent(event, false);
   host->SendMouseClickEvent(event, MBT_LEFT, false, 1);
@@ -459,6 +561,14 @@ CefRect ScreenRectToCef(NSRect frame) {
 
 - (void)cefRequestsNewTab:(NSString*)url {
   [self.delegate tab:self requestsNewTabWithURL:url];
+}
+
+- (void)cefRequestsNewTab:(NSString*)url background:(BOOL)background {
+  if (background && [self.delegate respondsToSelector:@selector(tab:requestsBackgroundTabWithURL:)]) {
+    [self.delegate tab:self requestsBackgroundTabWithURL:url];
+  } else {
+    [self.delegate tab:self requestsNewTabWithURL:url];
+  }
 }
 
 - (void)cefChanged {

@@ -52,6 +52,47 @@ enum TestScenarios {
             at(2) { shot("arclike") }
             at(3) { NSApp.terminate(nil) }
 
+        case "newtablinks":
+            // Links that ask for a new tab must become cha's tabs, never a
+            // window of Chromium's own: ⌘T with a page in front, then ⌘-click.
+            let page = "data:text/html,<title>Links</title><a id=l href='about:blank' "
+                + "style='position:fixed;left:0;top:0;width:300px;height:100px;display:block'>link</a>"
+            var before = 0
+            func strays() -> [NSWindow] {
+                NSApp.windows.filter {
+                    $0.isVisible && $0.parent == nil && !($0 is BrowserWindow) && !($0 is NSPanel)
+                        && $0.frame.width > 300
+                }
+            }
+            at(1) { controller.newTab(url: page) }
+            at(3) {
+                guard let window = controller.activeTab?.nativeWindow,
+                    let key = NSEvent.keyEvent(
+                        with: .keyDown, location: .zero, modifierFlags: [.command],
+                        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                        context: nil, characters: "t", charactersIgnoringModifiers: "t", isARepeat: false,
+                        keyCode: 17)
+                else { return }
+                NSApp.sendEvent(key)
+            }
+            at(4) {
+                SpaceChecks.check("⌘T over a page opens cha's command bar",
+                    controller.commandPanel?.isVisible == true && controller.commandMode == .newTab)
+                SpaceChecks.check("and no Chromium window", strays().isEmpty)
+                controller.closeCommandBar()
+                before = controller.activeSpace.tabs.count
+                controller.activeTab?.clickAt(x: 50, y: 50, modifiers: 1 << 7)
+            }
+            at(6) {
+                SpaceChecks.check("⌘-click adds a cha tab", controller.activeSpace.tabs.count == before + 1,
+                    "\(before) → \(controller.activeSpace.tabs.count)")
+                SpaceChecks.check("in the background", controller.activeTab?.title == "Links",
+                    controller.activeTab?.title ?? "-")
+                SpaceChecks.check("no Chromium window", strays().isEmpty)
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "quitkey":
             // ⌘Q as the keyboard sends it, with the page's window in front.
             at(2.5) {

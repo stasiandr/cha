@@ -1006,7 +1006,19 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func tab(_ tab: ChaTab, requestsNewTabWithURL url: String) {
+        NSLog("TAB opened in front: %@", url)
         newTab(url: url)
+    }
+
+    // ⌘-click, Open Link in New Tab: the tab goes into today's list (at the
+    // top, as new tabs do) and loads when opened; this page stays in front.
+    func tab(_ tab: ChaTab, requestsBackgroundTabWithURL url: String) {
+        var space = activeSpace
+        let data = TabData(url: url)
+        let firstToday = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
+        space.tabs.insert(data, at: firstToday)
+        replace(space)
+        NSLog("TAB opened in the background: %@", url)
     }
 
     func tabDidClose(_ tab: ChaTab) {

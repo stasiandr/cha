@@ -16,6 +16,9 @@ NS_ASSUME_NONNULL_BEGIN
 // The web content closed itself.
 - (void)tabDidClose:(ChaTab*)tab;
 @optional
+// A link to open in a new tab without leaving this one (⌘-click, the
+// context menu's Open Link in New Tab).
+- (void)tab:(ChaTab*)tab requestsBackgroundTabWithURL:(NSString*)url;
 // Find in page: |count| matches, the |active|-th selected (1-based).
 - (void)tab:(ChaTab*)tab didFindCount:(int)count active:(int)active final:(BOOL)final;
 @end
@@ -50,6 +53,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)executeJavaScriptWithUserGesture:(NSString*)script;
 // Synthesizes a real user click in the page, at view coordinates.
 - (void)clickAtX:(int)x y:(int)y;
+// The same with CEF event flags, e.g. 1 << 7 for ⌘.
+- (void)clickAtX:(int)x y:(int)y modifiers:(uint32_t)modifiers;
 - (void)close;
 // The page's rounded corners (0 in full screen).
 - (void)setCornerRadius:(CGFloat)radius;

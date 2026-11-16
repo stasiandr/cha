@@ -46,6 +46,15 @@ static double ChaMillisSinceStart() {
     [self terminate:self];
     return;
   }
+  // The same for every ⌘ shortcut: cha's menu first, the page after. A page's
+  // window is Chromium's and answers its own shortcuts before the menu does
+  // (⌘T opened a Chromium window). The Edit items send copy:/paste:… to the
+  // first responder, so in a page they still reach the page.
+  if (event.type == NSEventTypeKeyDown &&
+      (event.modifierFlags & NSEventModifierFlagCommand) &&
+      [self.mainMenu performKeyEquivalent:event]) {
+    return;
+  }
   CefScopedSendingEvent sendingEventScoper;
   [super sendEvent:event];
 }

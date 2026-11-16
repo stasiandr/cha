@@ -72,6 +72,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/op
   echo "links FAILED"; failed=$((failed + 1))
 fi
 
+step "links that want a new tab, and ⌘ shortcuts over a page"
+run_scenario newtablinks 30; code=$?
+grep -E 'CHECK ' build/check/newtablinks.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/newtablinks.log; then
+  echo "new-tab links FAILED"; failed=$((failed + 1))
+fi
+
 step "⌘Q with a page in front, and the close button"
 for sc in quitkey closewindow; do
   if run_scenario "$sc" 15 && grep -q 'TIMING shutdown-done' "build/check/$sc.log"; then
