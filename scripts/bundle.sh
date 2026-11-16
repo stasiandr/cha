@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Builds cha and leaves the app bundle at build/cha.app.
+# Builds cha and leaves the app bundle at build/cha.app, with the source stamp
+# it was built from in build/cha.stamp (the launcher compares it with
+# scripts/source-stamp to know when to rebuild).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export PATH="/opt/homebrew/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 [ -d third_party/cef ] || scripts/fetch-cef.sh
+
+# Taken before building: edits made during the build count as a change.
+stamp="$(scripts/source-stamp 2>/dev/null || true)"
 
 cmake -S . -B build -G Ninja >/dev/null
 ninja -C build cha
 
-rm -rf build/cha.app
-cp -R build/src/Release/cha.app build/cha.app
+# Only what changed is copied: the bundle carries ~300 MB of Chromium.
+mkdir -p build/cha.app
+rsync -a --delete build/src/Release/cha.app/ build/cha.app/
+[ -n "$stamp" ] && echo "$stamp" > build/cha.stamp
 echo "built build/cha.app"

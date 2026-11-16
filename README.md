@@ -21,8 +21,17 @@ The script fetches the CEF 152 binary distribution into `third_party/cef`
 ## Run
 
 ```
-open build/cha.app
+scripts/build-launcher.sh  # once → build/ChaLauncher.app
+open build/ChaLauncher.app
 ```
+
+Open the launcher, not build/cha.app (hop, Dock and Finder do, through
+`~/Applications/cha.app`): it opens the browser built from what is on disk
+now. When the sources changed since the last build (`scripts/source-stamp`
+against `build/cha.stamp`), it shows the build's progress, rebuilds and then
+opens. If cha is already running it only brings it forward, so open tabs are
+never lost to a rebuild; the fresh build comes with the next launch. Same
+design as Pilot's and Nest's launchers.
 
 The app is unsigned, so Chromium runs with `--use-mock-keychain` and encrypts
 saved passwords with a throwaway key. Once the app is signed, set

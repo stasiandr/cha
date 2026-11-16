@@ -1,0 +1,27 @@
+#!/bin/bash
+# source-stamp — fingerprint of the sources build/cha.app is built from.
+#
+# scripts/bundle.sh stores it in build/cha.stamp after a good build; the
+# launcher (scripts/launcher) compares it with the current one: equal — open,
+# different — rebuild. It fingerprints what is on disk, not the last commit:
+# uncommitted edits and new files count, ignored ones (build, third_party)
+# don't. Only paths that end up in the app count: editing docs or tests
+# doesn't trigger a rebuild.
+#
+# git does the hashing: the working tree is added to a temporary copy of the
+# index, so git rereads only files whose stat changed and the repository
+# itself is left untouched.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd -P)"
+paths=()
+for path in src CMakeLists.txt scripts/bundle.sh scripts/fetch-cef.sh; do
+    [[ -e "$repo/$path" ]] && paths+=("$path")
+done
+
+index="$(mktemp)"
+trap 'rm -f "$index"' EXIT
+cp "$(git -C "$repo" rev-parse --path-format=absolute --git-path index)" "$index" 2> /dev/null || true
+GIT_INDEX_FILE="$index" git -C "$repo" add -A -- "${paths[@]}" 2> /dev/null
+root="$(GIT_INDEX_FILE="$index" git -C "$repo" write-tree)"
+git -C "$repo" ls-tree "$root" -- "${paths[@]}" | git hash-object --stdin
