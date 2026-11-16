@@ -44,3 +44,27 @@ scenario's log line, `bench` — `scripts/bench.py`.
 - Active tab's page loaded (local page): under 500 ms.
 - ⌘Q: windows gone at once; process gone under 300 ms. Never hangs.
 - Only the active tab of each space is loaded at launch; others load on demand.
+
+## Status (2026-11-16)
+
+All of the above is implemented; `scripts/check.sh` passes: 47 space checks,
+the verification-code fill, and the bench:
+
+| mark | median |
+|---|---|
+| window with the sidebar | 189 ms |
+| first tab's browser created | 224 ms |
+| page loaded | 308 ms |
+| ⌘Q → windows hidden | < 1 ms |
+| ⌘Q → process gone | 116 ms |
+
+Before this work ⌘Q never quit: CEF's message loop ignores the quit while
+browsers are open, so the process kept running until killed.
+
+Checked only by hand (no headless path): dragging tabs and space icons, the
+colour panel, the hover states. The swipe is checked through synthesized
+scroll events fed to the handler; the direction for natural scrolling
+follows `isDirectionInvertedFromDevice`.
+
+Not done, deliberately: profiles per space (separate cookies), Little Arc,
+split view, boosts. They are Arc features, but not part of spaces as such.

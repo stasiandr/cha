@@ -28,26 +28,49 @@ The app is unsigned, so Chromium runs with `--use-mock-keychain` and encrypts
 saved passwords with a throwaway key. Once the app is signed, set
 `CHA_REAL_KEYCHAIN=1` to use the real keychain.
 
-`CHA_TEST=demo|codes|fullscreen` replays a UI scenario — the machine has no
-Accessibility permission, so scripts cannot click the interface.
-`CHA_TEST=sidebar` renders the sidebar offscreen into `build/sidebar.png`,
-which also works while the screen is asleep or locked.
+## Checks
+
+```
+scripts/check.sh           # build, space checks, code fill, launch/quit bench
+scripts/check.sh fast      # build and space checks
+scripts/check.sh window    # the space checks in a real window (Mac idle only)
+scripts/bench.py 5         # launch and quit timing alone
+```
+
+They run headless: `CHA_HEADLESS=1` keeps the windows off screen, never takes
+focus and mutes audio, and `CHA_PROFILE=<dir>` points state, codes and the
+Chromium profile at a throwaway directory. `CHA_TEST=<scenario>` replays a
+scenario (`spaces`, `codes`, `bench`, `demo`, …); pictures go to
+`build/shots`, logs to `build/check`. What "like Arc" means, and where it
+stands, is in [docs/arc-parity.md](docs/arc-parity.md).
 
 ## Keyboard
 
 - ⌘T command bar (opens the result in a new tab), ⌘L command bar for the current tab
-- ⇧⌘T empty tab, ⌘W close tab, ⌘1…⌘9 pick a tab
+- ⇧⌘T empty tab, ⌘W close tab (pinned tabs and favourites only unload), ⌘1…⌘9 pick a tab
+- ⌘D pin / unpin, ⇧⌘D add to favourites, ⇧⌘C copy link, ⇧⌘K clear today's tabs
+- ⌥⌘A archived tabs
 - ⇧⌘V fill the verification code for the current site
 - ⌘S toggle sidebar, ⌃⌘F full screen, ⌘R reload, ⌘[ / ⌘] back and forward
-- ⇧⌘N new space, ⌥⌘← / ⌥⌘→ switch spaces
+- ⇧⌘N new space, ⌃1…⌃9 go to a space, ⌥⌘← / ⌥⌘→ previous / next space
 
-The window takes the active space's colour, the page sits on it as a rounded
-card, pinned tabs show up as a grid of favourite tiles, and the new-tab button
-sits at the bottom next to the space switcher.
+## Spaces
 
-Drag a tab in the sidebar to reorder it, or drop it on a space icon to move it
-there. Double-click the space name to rename it. Drag the sidebar's right edge
-to resize it.
+As in Arc. Favourites sit on top as tiles shared by every space. Below them
+is the space's own page: its name (double-click to rename, ⋯ for more),
+pinned tabs and folders, a divider with Clear, New Tab, then today's tabs,
+newest first. The window takes the space's colour, and the page sits on it as
+a rounded card.
+
+Switch spaces with the icons at the bottom, ⌃1…⌃9, ⌥⌘←/→ or a two-finger
+swipe on the sidebar; the page slides along and the colours blend. A new
+space opens an editor page: name, an SF Symbol or any emoji, a preset or any
+colour. Drag space icons to reorder them; drop a tab on one to move it there.
+
+Pinned tabs remember the address they were pinned at (↩ takes them back).
+Today's tabs go to the archive on Clear, on ⌘W, or after 12 hours unseen; the
+archive (bottom left) and the command bar bring them back. Drag the sidebar's
+right edge to resize it.
 
 ## Verification codes
 
