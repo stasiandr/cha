@@ -43,7 +43,7 @@ struct SpacePageView: View {
 
     var body: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 // Arc shows no title over the tabs: pinned ones first, then
                 // (only when both kinds are there) the divider, then New Tab
                 // and today's.
@@ -131,17 +131,17 @@ struct SpacePageView: View {
             }
             controller.openCommandBar(mode: .newTab)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 10) {
                 Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: 14, weight: .regular))
                     .frame(width: 16)
                 Text("New Tab")
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 13.5, weight: .medium))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 7)
-            .frame(height: 32)
+            .padding(.horizontal, 8)
+            .frame(height: 35)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -162,11 +162,11 @@ struct TabRow: View {
         let style = SidebarStyle(dark: scheme == .dark)
         let isActive = space.activeTabID == tab.id
         let loaded = controller.isLoaded(tab.id)
-        HStack(spacing: 7) {
+        HStack(spacing: 10) {
             TabIcon(controller: controller, tab: tab, size: 16)
                 .opacity(tab.isPinned && !loaded && !isActive ? 0.6 : 1)
             Text(tab.displayTitle)
-                .font(.system(size: 12.5))
+                .font(.system(size: 13.5, weight: .medium))
                 .foregroundStyle(
                     tab.isPinned && !loaded && !isActive
                         ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
@@ -199,11 +199,11 @@ struct TabRow: View {
                 .uiFrame("close:\(tab.id)")
             }
         }
-        .padding(.leading, 7 + indent)
+        .padding(.leading, 8 + indent)
         .padding(.trailing, 8)
-        .frame(height: 32)
+        .frame(height: 35)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(style.card(active: isActive, hovered: hovered))
                 .shadow(color: isActive ? style.shadow : .clear, radius: 2.5, y: 1)
         )
@@ -277,8 +277,8 @@ struct FolderRow: View {
 
     var body: some View {
         let style = SidebarStyle(dark: scheme == .dark)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 7) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
                 Image(systemName: folder.isOpen ? "folder" : "folder.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -296,7 +296,7 @@ struct FolderRow: View {
                         .onAppear { focused = true }
                 } else {
                     Text(folder.name)
-                        .font(.system(size: 12.5))
+                        .font(.system(size: 13.5, weight: .medium))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -305,10 +305,10 @@ struct FolderRow: View {
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(folder.isOpen ? 90 : 0))
             }
-            .padding(.horizontal, 7)
-            .frame(height: 32)
+            .padding(.horizontal, 8)
+            .frame(height: 35)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .fill(style.card(active: false, hovered: hovered || targeted))
             )
             .contentShape(Rectangle())

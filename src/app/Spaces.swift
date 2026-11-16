@@ -40,6 +40,7 @@ extension BrowserController {
         let forward = target > activeSpaceIndex
         pageNeighbor = forward ? (nil, id) : (id, nil)
         applySpaceTint(spaces[target].theme)
+        revealSpace(id, forward: forward)
         slidePage(to: forward ? -width : width, duration: 0.32, then: id)
     }
 
@@ -84,7 +85,9 @@ extension BrowserController {
         pageAnimating = false
         applySpaceTint(animated: false)
         let space = activeSpace
-        activateTab(space.activeTabID ?? space.tabs.first?.id)
+        // The page already slid in with the sidebar; a switch without the
+        // slide (⌘ keys while hidden, a check) just fades.
+        activateTab(space.activeTabID ?? space.tabs.first?.id, transition: .fade)
         scheduleSave()
         Diagnostics.mark("space-switched")
     }
@@ -198,6 +201,7 @@ extension BrowserController {
         }
         let forward = pageOffset < 0
         applySpaceTint(target.theme)
+        revealSpace(target.id, forward: forward)
         slidePage(to: forward ? -width : width, duration: 0.26, then: target.id)
     }
 

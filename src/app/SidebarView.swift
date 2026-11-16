@@ -13,15 +13,15 @@ struct SidebarView: View {
         ZStack(alignment: .trailing) {
             VStack(spacing: 0) {
                 navigationRow
-                    .padding(.bottom, 3)
+                    .padding(.bottom, 1)
                 AddressPill(controller: controller)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 6)
                 FavoritesGrid(controller: controller)
                 main
                 BottomBar(controller: controller)
                     .padding(.top, 6)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
             .padding(.top, controller.isFullscreen ? 6 : 0)
             .padding(.bottom, 8)
             resizeHandle
@@ -72,25 +72,32 @@ struct SidebarView: View {
     // One line with the traffic lights: they sit on the left, the sidebar
     // toggle right after them, the arrows and reload on the right.
     private var navigationRow: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 5) {
             if !controller.isFullscreen {
-                Color.clear.frame(width: 54, height: 1)
+                // The toggle's centre lands 93 pt in, as in Arc (8 padding
+                // + 66 + 5 spacing + half the button).
+                Color.clear.frame(width: 66, height: 1)
             }
             ChromeButton(symbol: "sidebar.left", help: "Hide sidebar (⌘S)") {
                 controller.toggleSidebar()
             }
             Spacer(minLength: 0)
-            ChromeButton(symbol: "chevron.left", enabled: controller.canGoBack, help: "Back") {
-                controller.goBack()
-            }
-            ChromeButton(
-                symbol: "chevron.right", enabled: controller.canGoForward, help: "Forward"
-            ) {
-                controller.goForward()
+            // A narrow sidebar drops the arrows rather than pushing the row
+            // past its edges: the row needs 198 pt with them, 132 without.
+            if controller.sidebarWidth >= 214 || controller.isFullscreen {
+                ChromeButton(symbol: "chevron.left", enabled: controller.canGoBack, help: "Back") {
+                    controller.goBack()
+                }
+                ChromeButton(
+                    symbol: "chevron.right", enabled: controller.canGoForward, help: "Forward"
+                ) {
+                    controller.goForward()
+                }
             }
             ChromeButton(symbol: "arrow.clockwise", help: "Reload") { controller.reload() }
         }
-        .frame(height: 30)
+        // The traffic lights' line: their centres are 22 pt down.
+        .frame(height: 44)
         .opacity(hoveringChrome ? 1 : 0.6)
         .animation(.easeOut(duration: 0.15), value: hoveringChrome)
     }
@@ -123,8 +130,8 @@ struct ChromeButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 28, height: 26)
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 28, height: 28)
                 .foregroundStyle(enabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -215,7 +222,7 @@ struct AddressPill: View {
                     .help("Not secure")
             }
             Text(label(url))
-                .font(.system(size: 12.5, weight: .medium))
+                .font(.system(size: 13.5, weight: .medium))
                 .foregroundStyle(url.isEmpty || url == "about:blank" ? .tertiary : .secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -232,9 +239,9 @@ struct AddressPill: View {
                 .help("Copy link (⇧⌘C)")
             }
         }
-        .padding(.horizontal, 11)
-        .frame(height: 32)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(style.pill))
+        .padding(.horizontal, 12.5)
+        .frame(height: 36)
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(style.pill))
         .contentShape(Rectangle())
         .onTapGesture { controller.openCommandBar(mode: .current) }
         .onHover { hovered = $0 }
@@ -281,7 +288,7 @@ struct FavoritesGrid: View {
         return TabIcon(controller: controller, tab: tab, size: 18)
             .opacity(loaded || isActive ? 1 : 0.75)
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .frame(height: 45)
             .background(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .fill(isActive ? style.activeTile : style.tile)

@@ -71,6 +71,77 @@ final class BrowserWindow: NSWindow {
         // frame stands as set, not pulled back onto the main display.
         Diagnostics.quiet ? frameRect : super.constrainFrameRect(frameRect, to: screen)
     }
+
+    // Arc sets the traffic lights lower and further in than AppKit does, on
+    // the same line as the sidebar's first row: the close button's centre is
+    // 19 pt from the left and 22 pt from the top (measured on the user's Arc,
+    // macOS 26+ buttons). AppKit puts them back on every titlebar layout, so
+    // this runs after resizes, full screen and appearance changes.
+    static let trafficLightCenter = NSPoint(x: 19, y: 22)
+    private var buttonSpacing: CGFloat?
+
+    // Hidden in full screen and while the sidebar is hidden, as in Arc; the
+    // page then has the whole window.
+    var trafficLightsHidden = false {
+        didSet { placeTrafficLights() }
+    }
+
+    func placeTrafficLights() {
+        let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        let buttons = types.compactMap { standardWindowButton($0) }
+        guard buttons.count == 3, let titlebar = buttons[0].superview,
+            let container = titlebar.superview
+        else { return }
+        for button in buttons { button.isHidden = trafficLightsHidden }
+        guard !styleMask.contains(.fullScreen) else { return }
+        // Their own spacing (it changed between macOS versions), taken once
+        // from where AppKit first put them.
+        let spacing = buttonSpacing ?? (buttons[1].frame.minX - buttons[0].frame.minX)
+        buttonSpacing = spacing
+
+        // The titlebar stays AppKit's (32 pt): a button centred 22 pt down
+        // still fits. Positions are worked out in the window's coordinates,
+        // then carried into the titlebar's.
+        guard let content = contentView else { return }
+        let height = content.bounds.height
+        placing = true
+        defer { placing = false }
+        for (index, button) in buttons.enumerated() {
+            let size = button.frame.size
+            let centre = NSPoint(
+                x: Self.trafficLightCenter.x + CGFloat(index) * spacing,
+                y: height - Self.trafficLightCenter.y)
+            let local = titlebar.convert(centre, from: nil)
+            let origin = NSPoint(
+                x: (local.x - size.width / 2).rounded(), y: (local.y - size.height / 2).rounded())
+            if button.frame.origin != origin { button.setFrameOrigin(origin) }
+        }
+        watch(buttons)
+        _ = container
+    }
+
+    // AppKit moves the buttons back on its own titlebar layouts, which don't
+    // all pass through this window; each move is undone as it happens.
+    private var placing = false
+    private var watched = false
+    private func watch(_ buttons: [NSButton]) {
+        guard !watched else { return }
+        watched = true
+        for button in buttons {
+            button.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification, object: button, queue: .main
+            ) { [weak self] _ in
+                guard let self, !self.placing else { return }
+                self.placeTrafficLights()
+            }
+        }
+    }
+
+    override func layoutIfNeeded() {
+        super.layoutIfNeeded()
+        placeTrafficLights()
+    }
 }
 
 // Where SwiftUI put things, for the UI checks to click and drag on. Only

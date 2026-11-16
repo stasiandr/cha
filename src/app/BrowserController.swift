@@ -39,7 +39,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var pageAnimating = false
     var pageGeneration = 0
 
-    @Published var sidebarWidth: CGFloat = 210
+    @Published var sidebarWidth: CGFloat = 225
     static let minSidebarWidth: CGFloat = 180
     static let maxSidebarWidth: CGFloat = 420
     static let contentInset: CGFloat = 8
@@ -75,8 +75,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let saved = state.activeSpaceID
         activeSpaceID =
             state.spaces.contains { $0.id == saved } ? saved! : state.spaces[0].id
-        sidebarWidth = CGFloat(state.sidebarWidth ?? 210)
+        sidebarWidth = CGFloat(state.sidebarWidth ?? 225)
         super.init()
+        sidebarFraction = CGFloat(state.sidebarFraction ?? Double(sidebarWidth) / 1280)
         archiveStaleTabs()
         loadSavedFavicons()
     }
@@ -164,6 +165,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             window.makeKeyAndOrderFront(nil)
         }
         self.window = window
+        followWindowWidth()
+        window.placeTrafficLights()
         Diagnostics.mark("window")
         applySpaceTint()
         installSwipeMonitor()
@@ -241,16 +244,34 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         CATransaction.commit()
     }
 
-    func windowDidResize(_ notification: Notification) { layoutActiveTab() }
+    func windowDidResize(_ notification: Notification) {
+        followWindowWidth()
+        layoutActiveTab()
+        browserWindow?.placeTrafficLights()
+    }
     func windowDidMove(_ notification: Notification) { layoutActiveTab() }
+
+    var browserWindow: BrowserWindow? { window as? BrowserWindow }
+
+    // The traffic lights go in full screen and with the sidebar hidden.
+    func updateTrafficLights() {
+        browserWindow?.trafficLightsHidden = isFullscreen || !sidebarVisible
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        isFullscreen = true
+        updateTrafficLights()
+    }
 
     func windowDidEnterFullScreen(_ notification: Notification) {
         isFullscreen = true
+        updateTrafficLights()
         layoutActiveTab()
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
         isFullscreen = false
+        updateTrafficLights()
         layoutActiveTab()
     }
 
@@ -327,7 +348,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if url == "about:blank" { focusAddressBar() }
     }
 
-    func activateTab(_ id: UUID?) {
+    func activateTab(_ id: UUID?, transition: PageTransition = .fade) {
         guard let id, let data = tabData(id) else {
             hideAllTabs()
             addressText = ""
@@ -341,42 +362,112 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         update(tabID: id) { $0.lastActive = Date() }
         addressText = data.url
 
-        // Tabs restored from disk have no browser yet; create one on demand.
-        let tab: ChaTab
-        if let existing = liveTabs[id] {
-            tab = existing
-        } else {
-            tab = ChaTab(url: data.url, screenFrame: contentScreenRect)
-            tab.delegate = self
-            liveTabs[id] = tab
-            tabIDsByObject[ObjectIdentifier(tab)] = id
-            Diagnostics.mark("first-tab-created")
-        }
-        showOnly(tabID: id)
+        let tab = liveTab(id, url: data.url)
+        showOnly(tabID: id, transition: transition)
         canGoBack = tab.canGoBack
         canGoForward = tab.canGoForward
         window?.title = data.displayTitle
         if tab.nativeWindow != nil, !Diagnostics.quiet { tab.focus() }
     }
 
-    func showOnly(tabID: UUID) {
+    // Tabs restored from disk have no browser yet; one is made on demand.
+    @discardableResult
+    func liveTab(_ id: UUID, url: String) -> ChaTab {
+        if let existing = liveTabs[id] { return existing }
+        let tab = ChaTab(url: url, screenFrame: contentScreenRect)
+        tab.delegate = self
+        liveTabs[id] = tab
+        tabIDsByObject[ObjectIdentifier(tab)] = id
+        Diagnostics.mark("first-tab-created")
+        return tab
+    }
+
+    // How the page changes. Arc doesn't cut from one page to the next: a tab
+    // crossfades in, and a space's page slides in from the side the space
+    // comes from, together with the sidebar.
+    enum PageTransition: Equatable {
+        case none
+        case fade
+        case slide(forward: Bool)
+    }
+
+    static let slideDistance: CGFloat = 36
+
+    func showOnly(tabID: UUID, transition: PageTransition = .none) {
+        guard let window else { return }
+        let target = contentScreenRect
+        var incoming: NSWindow?
+        var outgoing: [NSWindow] = []
         for (id, tab) in liveTabs {
             guard let native = tab.nativeWindow else { continue }
             if id == tabID {
-                if native.parent !== window {
-                    window.addChildWindow(native, ordered: .above)
-                }
-                native.setFrame(contentScreenRect, display: true)
-                if Diagnostics.quiet {
-                    native.orderFront(nil)
-                } else {
-                    native.makeKeyAndOrderFront(nil)
-                }
+                incoming = native
             } else if native.parent != nil || native.isVisible {
-                if native.parent != nil { window.removeChildWindow(native) }
-                native.orderOut(nil)
+                outgoing.append(native)
             }
         }
+        guard let incoming else {
+            for native in outgoing { hidePage(native) }
+            return
+        }
+        let wasShown = incoming.parent === window && incoming.isVisible && incoming.alphaValue > 0.99
+        let animate = transition != .none && !wasShown && !outgoing.isEmpty
+        if incoming.parent !== window { window.addChildWindow(incoming, ordered: .above) }
+
+        guard animate else {
+            incoming.alphaValue = 1
+            incoming.setFrame(target, display: true)
+            front(incoming)
+            for native in outgoing { hidePage(native) }
+            return
+        }
+
+        var dx: CGFloat = 0
+        if case .slide(let forward) = transition { dx = forward ? Self.slideDistance : -Self.slideDistance }
+        incoming.alphaValue = 0
+        incoming.setFrame(target.offsetBy(dx: dx, dy: 0), display: true)
+        front(incoming)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = dx == 0 ? 0.16 : 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            incoming.animator().alphaValue = 1
+            if dx != 0 { incoming.animator().setFrame(target, display: true) }
+            for native in outgoing {
+                native.animator().alphaValue = 0
+                if dx != 0 {
+                    native.animator().setFrame(native.frame.offsetBy(dx: -dx, dy: 0), display: true)
+                }
+            }
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            for native in outgoing where native !== self.activeTab?.nativeWindow {
+                self.hidePage(native)
+            }
+            incoming.alphaValue = 1
+        }
+    }
+
+    private func front(_ native: NSWindow) {
+        if Diagnostics.quiet { native.orderFront(nil) } else { native.makeKeyAndOrderFront(nil) }
+    }
+
+    private func hidePage(_ native: NSWindow) {
+        if native.parent != nil { window?.removeChildWindow(native) }
+        native.orderOut(nil)
+        native.alphaValue = 1
+    }
+
+    // The space's page slides in as the sidebar starts sliding, not after.
+    func revealSpace(_ spaceID: UUID, forward: Bool) {
+        guard let space = space(spaceID),
+            let id = space.activeTabID ?? space.tabs.first?.id,
+            let data = tabData(id)
+        else {
+            hideAllTabs()
+            return
+        }
+        liveTab(id, url: data.url)
+        showOnly(tabID: id, transition: .slide(forward: forward))
     }
 
     private func hideAllTabs() {
@@ -608,16 +699,34 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     // Dragging the sidebar's right edge.
+    // The sidebar keeps its share of the window: dragging its edge sets the
+    // share, resizing the window (or full screen) scales the sidebar with it.
+    var sidebarFraction: CGFloat = 0.176
+
     func setSidebarWidth(_ width: CGFloat) {
-        sidebarWidth = min(max(width, Self.minSidebarWidth), Self.maxSidebarWidth)
+        applySidebarWidth(width)
+        if let windowWidth = window?.frame.width, windowWidth > 0 {
+            sidebarFraction = sidebarWidth / windowWidth
+        }
+        scheduleSave()
+    }
+
+    private func applySidebarWidth(_ width: CGFloat) {
+        sidebarWidth = min(max(width.rounded(), Self.minSidebarWidth), Self.maxSidebarWidth)
         sidebarWidthConstraint.constant = sidebarWidth
         layoutActiveTab()
-        scheduleSave()
+    }
+
+    func followWindowWidth() {
+        guard let windowWidth = window?.frame.width, windowWidth > 0 else { return }
+        let target = (sidebarFraction * windowWidth).rounded()
+        if abs(target - sidebarWidth) >= 1 { applySidebarWidth(target) }
     }
 
     func toggleSidebar() {
         sidebarVisible.toggle()
         sidebarView?.isHidden = !sidebarVisible
+        updateTrafficLights()
         layoutActiveTab()
     }
 
@@ -804,7 +913,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Persistence.save(
             BrowserState(
                 spaces: spaces, activeSpaceID: activeSpaceID,
-                sidebarWidth: Double(sidebarWidth), favorites: favorites,
+                sidebarWidth: Double(sidebarWidth), sidebarFraction: Double(sidebarFraction),
+                favorites: favorites,
                 archive: archive))
     }
 }

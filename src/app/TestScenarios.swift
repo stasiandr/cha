@@ -39,13 +39,13 @@ enum TestScenarios {
             }
             space.theme = SpaceTheme.presets[8]
             controller.replace(space)
-            controller.setSidebarWidth(193)
             if let window = controller.window {
                 var frame = window.frame
                 frame.origin.y += frame.height - 669
                 frame.size = NSSize(width: 1114, height: 669)
                 window.setFrame(frame, display: true)
             }
+            controller.setSidebarWidth(227)
             controller.activateTab(space.tabs[1].id)
             at(2) { shot("arclike") }
             at(3) { NSApp.terminate(nil) }

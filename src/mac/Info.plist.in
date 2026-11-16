@@ -29,6 +29,25 @@
 	</dict>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
+	<!-- Pages ask for these through Chromium (passkeys from a phone use
+	     Bluetooth, calls use the camera and microphone, maps the location).
+	     Without a description macOS kills the app on first use. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>A website wants to use Bluetooth, for example to sign in with a passkey from your phone.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>A website wants to use Bluetooth, for example to sign in with a passkey from your phone.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>A website wants to use your camera.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>A website wants to use your microphone.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>A website wants to know your location.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>A website wants to know your location.</string>
+	<key>NSWebBrowserPublicKeyCredentialUsageDescription</key>
+	<string>A website wants to sign you in with a passkey.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>A website wants to capture audio.</string>
 	<key>NSPrincipalClass</key>
 	<string>ChaApplication</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>

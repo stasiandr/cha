@@ -35,6 +35,50 @@ enum SpaceChecks {
         }
     }
 
+    // The window's own chrome: traffic lights where Arc has them, hidden
+    // with the sidebar, and a sidebar that scales with the window.
+    static func checkChrome(_ c: BrowserController) {
+        guard let window = c.browserWindow, let close = window.standardWindowButton(.closeButton),
+            let content = window.contentView
+        else { return check("window buttons found", false) }
+        let inWindow = close.convert(close.bounds, to: nil)
+        let center = NSPoint(x: inWindow.midX, y: content.bounds.height - inWindow.midY)
+        check(
+            "traffic lights where Arc has them",
+            abs(center.x - BrowserWindow.trafficLightCenter.x) < 1.5
+                && abs(center.y - BrowserWindow.trafficLightCenter.y) < 1.5,
+            NSStringFromPoint(center))
+        c.toggleSidebar()
+        check("traffic lights hide with the sidebar", close.isHidden)
+        c.toggleSidebar()
+        check("and come back", !close.isHidden)
+
+        let before = c.sidebarWidth
+        var frame = window.frame
+        let original = frame
+        frame.size.width = original.width * 1.25
+        window.setFrame(frame, display: true)
+        check(
+            "sidebar scales with the window",
+            abs(c.sidebarWidth - (before * 1.25).rounded()) <= 1, "\(before) → \(c.sidebarWidth)")
+        window.setFrame(original, display: true)
+        check("and back", abs(c.sidebarWidth - before) <= 1, "\(c.sidebarWidth)")
+        let again = c.browserWindow.map { b -> NSPoint in
+            let r = close.convert(close.bounds, to: nil)
+            return NSPoint(x: r.midX, y: (b.contentView?.bounds.height ?? 0) - r.midY)
+        } ?? .zero
+        check("traffic lights stay put after a resize", abs(again.y - 22) < 1.5, NSStringFromPoint(again))
+    }
+
+    // Pages shown: exactly one, fully opaque, once a transition is over.
+    static func checkOnePage(_ name: String, _ c: BrowserController) {
+        let pages = (c.window.childWindows ?? []).filter { $0.isVisible && !($0 is NSPanel) }
+        check(
+            name, pages.count == 1 && pages.first?.alphaValue == 1
+                && pages.first === c.activeTab?.nativeWindow,
+            "\(pages.count) visible, alpha \(pages.map(\.alphaValue))")
+    }
+
     // A trackpad scroll event over the sidebar. phase: 1 began, 2 changed,
     // 4 ended (CGScrollPhase).
     static func scrollEvent(phase: Int, dx: Double, dy: Double = 0, in c: BrowserController)
@@ -111,6 +155,7 @@ enum SpaceChecks {
                 NSApp.appearance = light
                 personal = c.activeSpaceID
                 check("starts with one space", c.spaces.count == 1)
+                checkChrome(c)
                 c.navigate(to: page("Home"))
             }),
             (0.5, {
@@ -158,7 +203,10 @@ enum SpaceChecks {
                     c.activeSpace.tabs(in: folder).map(\.displayTitle) == ["Spec"])
                 c.activateTab(c.activeSpace.unpinnedTabs.first?.id)
             }),
-            (0.8, { TestScenarios.shot("spaces-work-light") }),
+            (0.8, {
+                checkOnePage("one page after a tab switch", c)
+                TestScenarios.shot("spaces-work-light")
+            }),
             (0.2, {
                 NSApp.appearance = dark
             }),
@@ -169,6 +217,7 @@ enum SpaceChecks {
                 check("switch is animated", c.pageAnimating)
             }),
             (0.7, {
+                checkOnePage("one page after a space switch", c)
                 check("switched by click", c.activeSpaceID == personal)
                 check("page settled", c.pageOffset == 0 && !c.pageAnimating)
                 check("favourites shared", c.favorites.count == 1)

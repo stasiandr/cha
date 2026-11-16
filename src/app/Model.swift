@@ -183,6 +183,7 @@ struct BrowserState: Codable {
     var spaces: [SpaceData]
     var activeSpaceID: UUID?
     var sidebarWidth: Double?
+    var sidebarFraction: Double?  // Share of the window's width.
     var favorites: [TabData]?
     var archive: [ArchivedTab]?
 
