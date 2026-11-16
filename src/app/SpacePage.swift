@@ -44,9 +44,10 @@ struct SpacePageView: View {
     var body: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 6) {
-                // Arc shows no title over the tabs: pinned ones first, then
-                // (only when both kinds are there) the divider, then New Tab
-                // and today's.
+                // As in Arc: the space's name (dimmed, with its icon), its
+                // pinned tabs and folders, the divider with Clear (when
+                // there are today's tabs), New Tab, today's tabs.
+                header
                 pinnedSection
                 if !space.pinnedTabs.isEmpty || !space.folders.isEmpty,
                     !space.unpinnedTabs.isEmpty
@@ -70,6 +71,52 @@ struct SpacePageView: View {
             }
         }
         .scrollIndicators(.never)
+    }
+
+    @State private var renaming = false
+    @State private var nameDraft = ""
+    @FocusState private var nameFocused: Bool
+
+    // The space's name as the first row, dimmed, the way Arc shows it.
+    // Double-click renames; it takes tabs dropped on it as pinned.
+    private var header: some View {
+        HStack(spacing: 10) {
+            SpaceIcon(space: space, size: 13)
+                .frame(width: 16)
+            if renaming {
+                TextField("Space name", text: $nameDraft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .focused($nameFocused)
+                    .onSubmit {
+                        controller.renameSpace(space.id, to: nameDraft)
+                        renaming = false
+                    }
+                    .onExitCommand { renaming = false }
+                    .onAppear { nameFocused = true }
+            } else {
+                Text(space.name)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        // Arc's header is clearly dimmer than the tabs; .secondary on the
+        // tinted glass comes out nearly white.
+        .foregroundStyle(.primary.opacity(0.45))
+        .padding(.horizontal, 8)
+        .frame(height: 35)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            nameDraft = space.name
+            renaming = true
+        }
+        .contextMenu { spaceMenu }
+        .dropDestination(for: String.self) { items, _ in
+            guard let id = DragPayload.tabID(items) else { return false }
+            controller.moveTab(id, toSection: true)
+            return true
+        }
     }
 
     @ViewBuilder
@@ -155,8 +202,12 @@ struct TabRow: View {
     let space: SpaceData
     let tab: TabData
     var indent: CGFloat = 0
+    var isFavorite = false
     @Environment(\.colorScheme) private var scheme
     @State private var hovered = false
+    @State private var renaming = false
+    @State private var draft = ""
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         let style = SidebarStyle(dark: scheme == .dark)
@@ -165,14 +216,25 @@ struct TabRow: View {
         HStack(spacing: 10) {
             TabIcon(controller: controller, tab: tab, size: 16)
                 .opacity(tab.isPinned && !loaded && !isActive ? 0.6 : 1)
-            Text(tab.displayTitle)
-                .font(.system(size: 13.5, weight: .medium))
-                .foregroundStyle(
-                    tab.isPinned && !loaded && !isActive
-                        ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
-                )
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if renaming {
+                TextField(tab.title.isEmpty ? "Tab name" : tab.title, text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .focused($nameFocused)
+                    .onSubmit { finishRename() }
+                    .onExitCommand { renaming = false }
+                    .onChange(of: nameFocused) { _, focused in if !focused { finishRename() } }
+                    .onAppear { nameFocused = true }
+            } else {
+                Text(tab.displayTitle)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundStyle(
+                        tab.isPinned && !loaded && !isActive
+                            ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
+                    )
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             Spacer(minLength: 0)
             if tab.hasLeftPinnedURL, hovered || isActive {
                 Button {
@@ -211,13 +273,43 @@ struct TabRow: View {
         .uiFrame("tab:\(tab.id)")
         .onHover { hovered = $0 }
         .onTapGesture { controller.activateTab(tab.id) }
+        // Double-click renames; it rides along with the single click, so
+        // opening a tab doesn't wait to see whether a second click comes.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { startRename() })
         .onDrag { DragPayload.tab(tab.id) }
         .dropDestination(for: String.self) { items, _ in
             guard let id = DragPayload.tabID(items) else { return false }
             controller.moveTab(id, before: tab.id)
             return true
         }
-        .contextMenu { TabMenu(controller: controller, space: space, tab: tab) }
+        .contextMenu {
+            Button("Rename…") { startRename() }
+            Divider()
+            if isFavorite {
+                Button("Remove from Favorites") { controller.removeFromFavorites(tab.id) }
+                Button("Copy Link") { controller.copyLink(tab.id) }
+                if tab.hasLeftPinnedURL {
+                    Button("Back to Pinned Address") { controller.resetToPinnedURL(tab.id) }
+                }
+                Divider()
+                Button("Unload") { controller.unload(tab.id) }.disabled(!loaded)
+            } else {
+                TabMenu(controller: controller, space: space, tab: tab)
+            }
+        }
+    }
+}
+
+extension TabRow {
+    func startRename() {
+        draft = tab.customTitle ?? tab.displayTitle
+        renaming = true
+    }
+
+    func finishRename() {
+        guard renaming else { return }
+        renaming = false
+        controller.renameTab(tab.id, to: draft)
     }
 }
 

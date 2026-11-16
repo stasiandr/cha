@@ -26,6 +26,7 @@ struct SidebarView: View {
             .padding(.bottom, 8)
             resizeHandle
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The sidebar runs up under the title bar: its first row shares the
         // line with the traffic lights, as in Arc.
         .ignoresSafeArea()
@@ -241,6 +242,7 @@ struct AddressPill: View {
         }
         .padding(.horizontal, 12.5)
         .frame(height: 36)
+        .uiFrame("pill")
         .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(style.pill))
         .contentShape(Rectangle())
         .onTapGesture { controller.openCommandBar(mode: .current) }
@@ -257,60 +259,33 @@ struct AddressPill: View {
 
 // MARK: - Favourites
 
-// Favourites are shared by every space and sit above them as tiles. The grid
-// takes drops, so dragging a tab up makes it a favourite.
+// Favourites are shared by every space and sit above them as a list of
+// named rows, like the tabs below. The list takes drops, so dragging a tab up
+// makes it a favourite; a line sets it off from the space.
 struct FavoritesGrid: View {
     @ObservedObject var controller: BrowserController
-    @Environment(\.colorScheme) private var scheme
-    @State private var targeted = false
 
     var body: some View {
         let favorites = controller.favorites
         if !favorites.isEmpty {
-            let columns = Array(
-                repeating: GridItem(.flexible(), spacing: 7), count: min(4, favorites.count))
-            LazyVGrid(columns: columns, spacing: 7) {
-                ForEach(favorites) { tab in tile(tab) }
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(favorites) { tab in
+                    // The open favourite shows as open in whichever space.
+                    TabRow(
+                        controller: controller, space: controller.activeSpace, tab: tab,
+                        isFavorite: true)
+                }
+                Rectangle()
+                    .fill(.primary.opacity(0.12))
+                    .frame(height: 1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
             }
-            .padding(.bottom, 10)
             .dropDestination(for: String.self) { items, _ in
                 guard let id = DragPayload.tabID(items) else { return false }
                 controller.addToFavorites(id)
                 return true
-            } isTargeted: { targeted = $0 }
+            }
         }
-    }
-
-    private func tile(_ tab: TabData) -> some View {
-        let style = SidebarStyle(dark: scheme == .dark)
-        let isActive = controller.activeTabID == tab.id
-        let loaded = controller.isLoaded(tab.id)
-        return TabIcon(controller: controller, tab: tab, size: 18)
-            .opacity(loaded || isActive ? 1 : 0.75)
-            .frame(maxWidth: .infinity)
-            .frame(height: 45)
-            .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(isActive ? style.activeTile : style.tile)
-                    .shadow(color: isActive ? style.shadow : .clear, radius: 3, y: 1)
-            )
-            .contentShape(Rectangle())
-            .onTapGesture { controller.activateTab(tab.id) }
-            .help(tab.displayTitle)
-            .onDrag { DragPayload.tab(tab.id) }
-            .dropDestination(for: String.self) { items, _ in
-                guard let id = DragPayload.tabID(items) else { return false }
-                controller.moveTab(id, before: tab.id)
-                return true
-            }
-            .contextMenu {
-                Button("Remove from Favorites") { controller.removeFromFavorites(tab.id) }
-                Button("Copy Link") { controller.copyLink(tab.id) }
-                if tab.hasLeftPinnedURL {
-                    Button("Back to Pinned Address") { controller.resetToPinnedURL(tab.id) }
-                }
-                Divider()
-                Button("Unload") { controller.unload(tab.id) }.disabled(!loaded)
-            }
     }
 }

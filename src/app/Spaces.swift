@@ -6,6 +6,10 @@ import SwiftUI
 extension BrowserController {
     var activeSpaceIndex: Int { spaces.firstIndex { $0.id == activeSpaceID } ?? 0 }
 
+    // A space switch is a glance, not a show: the sidebar slides over in
+    // 150 ms and the page only crossfades.
+    static let switchDuration = 0.15
+
     func space(_ id: UUID?) -> SpaceData? {
         guard let id else { return nil }
         return spaces.first { $0.id == id }
@@ -41,7 +45,7 @@ extension BrowserController {
         pageNeighbor = forward ? (nil, id) : (id, nil)
         applySpaceTint(spaces[target].theme)
         revealSpace(id, forward: forward)
-        slidePage(to: forward ? -width : width, duration: 0.32, then: id)
+        slidePage(to: forward ? -width : width, duration: Self.switchDuration, then: id)
     }
 
     // Animates the page to |offset|, then opens |space| (or just settles when
@@ -55,7 +59,7 @@ extension BrowserController {
             guard let self, self.pageGeneration == generation, self.pageAnimating else { return }
             if let space { self.commitSpace(space) } else { self.settlePage() }
         }
-        withAnimation(.spring(duration: duration, bounce: 0.0)) {
+        withAnimation(.easeOut(duration: duration)) {
             pageOffset = offset
         } completion: {
             finish()
@@ -63,7 +67,7 @@ extension BrowserController {
         // SwiftUI reports the end of an animation from the display's refresh;
         // a window that is hidden or covered may never get one, so the slide
         // also finishes on a timer. Whichever comes first wins.
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.1, execute: finish)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05, execute: finish)
     }
 
     private func settlePage() {
@@ -87,7 +91,7 @@ extension BrowserController {
         let space = activeSpace
         // The page already slid in with the sidebar; a switch without the
         // slide (⌘ keys while hidden, a check) just fades.
-        activateTab(space.activeTabID ?? space.tabs.first?.id, transition: .fade)
+        activateTab(space.activeTabID, transition: .fade)
         scheduleSave()
         Diagnostics.mark("space-switched")
     }
@@ -196,13 +200,13 @@ extension BrowserController {
 
         guard let target else {
             applySpaceTint()
-            slidePage(to: 0, duration: 0.28, then: nil)
+            slidePage(to: 0, duration: Self.switchDuration, then: nil)
             return
         }
         let forward = pageOffset < 0
         applySpaceTint(target.theme)
         revealSpace(target.id, forward: forward)
-        slidePage(to: forward ? -width : width, duration: 0.26, then: target.id)
+        slidePage(to: forward ? -width : width, duration: Self.switchDuration, then: target.id)
     }
 
     // MARK: Making and editing

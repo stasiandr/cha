@@ -56,18 +56,81 @@ enum SpaceChecks {
         let before = c.sidebarWidth
         var frame = window.frame
         let original = frame
-        frame.size.width = original.width * 1.25
-        window.setFrame(frame, display: true)
-        check(
-            "sidebar scales with the window",
-            abs(c.sidebarWidth - (before * 1.25).rounded()) <= 1, "\(before) → \(c.sidebarWidth)")
+        for scale in [1.4, 0.75] {
+            frame.size.width = (original.width * scale).rounded()
+            window.setFrame(frame, display: true)
+            window.contentView?.layoutSubtreeIfNeeded()
+            check(
+                "sidebar scales with the window ×\(scale)",
+                abs(c.sidebarWidth - (before * scale).rounded()) <= 1
+                    || c.sidebarWidth == BrowserController.minSidebarWidth
+                    || c.sidebarWidth == BrowserController.maxSidebarWidth,
+                "\(before) → \(c.sidebarWidth)")
+            checkSidebarFits("×\(scale)", c)
+        }
         window.setFrame(original, display: true)
+        window.contentView?.layoutSubtreeIfNeeded()
         check("and back", abs(c.sidebarWidth - before) <= 1, "\(c.sidebarWidth)")
+        checkSidebarFits("back", c)
+        // Dragging the sidebar's edge goes through setSidebarWidth.
+        for width in [320.0, 190.0, before] {
+            c.setSidebarWidth(width)
+            window.contentView?.layoutSubtreeIfNeeded()
+            checkSidebarFits("dragged to \(Int(width))", c)
+        }
         let again = c.browserWindow.map { b -> NSPoint in
             let r = close.convert(close.bounds, to: nil)
             return NSPoint(x: r.midX, y: (b.contentView?.bounds.height ?? 0) - r.midY)
         } ?? .zero
         check("traffic lights stay put after a resize", abs(again.y - 22) < 1.5, NSStringFromPoint(again))
+    }
+
+    // What is on screen, not just the number: the sidebar view is as wide
+    // as sidebarWidth, its pill spans it less the padding, and the page
+    // starts right where the sidebar ends.
+    static func checkSidebarFits(_ label: String, _ c: BrowserController) {
+        guard let view = c.sidebarView else { return check("sidebar view found", false) }
+        check(
+            "sidebar view as wide as the sidebar (\(label))",
+            abs(view.frame.width - c.sidebarWidth) < 1,
+            "view \(view.frame.width) vs \(c.sidebarWidth)")
+        if let pill = UIFrames.frames["pill"] {
+            check(
+                "pill spans the sidebar (\(label))",
+                abs(pill.minX - 8) < 1 && abs(pill.maxX - (c.sidebarWidth - 8)) < 1,
+                "pill \(pill.minX)…\(pill.maxX) in \(c.sidebarWidth)")
+        }
+        check(
+            "page starts where the sidebar ends (\(label))",
+            abs(c.contentLocalRect.minX - c.sidebarWidth) < 1 && abs(view.frame.maxX - c.sidebarWidth) < 1,
+            "page \(c.contentLocalRect.minX), view ends \(view.frame.maxX)")
+    }
+
+    // Full screen without going full screen (that would take over the
+    // display): the page's rectangle and shape for both modes.
+    static func checkFullscreenShape(_ c: BrowserController) {
+        guard let content = c.window.contentView else { return }
+        c.isFullscreen = true
+        c.applyPageShape()
+        let full = c.contentLocalRect
+        check(
+            "full screen: the page runs to the edges",
+            full.minX == c.sidebarWidth && full.minY == 0 && full.maxX == content.bounds.width
+                && full.maxY == content.bounds.height,
+            NSStringFromRect(full))
+        check("full screen: no corners", c.activeTab?.nativeWindow?.contentView?.layer?.cornerRadius == 0)
+        c.isFullscreen = false
+        c.applyPageShape()
+        let card = c.contentLocalRect
+        check(
+            "window: the page is a card with a margin",
+            card.minY == BrowserController.contentInset
+                && card.maxX == content.bounds.width - BrowserController.contentInset,
+            NSStringFromRect(card))
+        check(
+            "window: rounded corners",
+            c.activeTab?.nativeWindow?.contentView?.layer?.cornerRadius
+                == BrowserController.contentCornerRadius)
     }
 
     // Pages shown: exactly one, fully opaque, once a transition is over.
@@ -147,6 +210,7 @@ enum SpaceChecks {
         var pinned = UUID()
         var favorite = UUID()
         var folder = UUID()
+        var findFirst = 0
         let dark = NSAppearance(named: .darkAqua)
         let light = NSAppearance(named: .aqua)
 
@@ -205,6 +269,7 @@ enum SpaceChecks {
             }),
             (0.8, {
                 checkOnePage("one page after a tab switch", c)
+                checkFullscreenShape(c)
                 TestScenarios.shot("spaces-work-light")
             }),
             (0.2, {
@@ -216,7 +281,10 @@ enum SpaceChecks {
                 c.selectSpace(personal)
                 check("switch is animated", c.pageAnimating)
             }),
-            (0.7, {
+            (0.25, {
+                check("switch done within 250 ms", c.activeSpaceID == personal && !c.pageAnimating)
+            }),
+            (0.45, {
                 checkOnePage("one page after a space switch", c)
                 check("switched by click", c.activeSpaceID == personal)
                 check("page settled", c.pageOffset == 0 && !c.pageAnimating)
@@ -322,6 +390,75 @@ enum SpaceChecks {
                 c.addSpace()
                 c.finishEditing(cancelled: true)
                 check("cancelled new space removed", c.spaces.count == 2)
+            }),
+            (0.8, {
+                c.selectSpace(work, animated: false)
+                // ⌘F: the find bar finds and counts, steps, and closes.
+                c.newTab(url: "data:text/html,<title>Find</title><p>alpha beta gamma beta delta</p>")
+            }),
+            (1.2, {
+                c.openFindBar()
+                check("⌘F opens the find bar", c.isFindOpen)
+                c.find.query = "beta"
+                c.search("beta", findNext: false)
+            }),
+            (1.0, {
+                check("find counts matches", c.find.count == 2, "\(c.find.count)")
+                c.findNext(forward: true)
+            }),
+            (0.6, {
+                findFirst = c.find.active
+                c.findNext(forward: true)
+            }),
+            (0.6, {
+                // Off screen Chromium only picks a match once asked to step,
+                // so the check is that ⌘G moves between the two.
+                check(
+                    "⌘G steps between matches",
+                    (1...2).contains(c.find.active) && (1...2).contains(findFirst)
+                        && c.find.active != findFirst,
+                    "\(findFirst) → \(c.find.active)")
+                if let bar = c.findPanel {
+                    let page = c.contentScreenRect
+                    check(
+                        "find bar sits at the page's top right",
+                        abs(bar.frame.maxX - (page.maxX - 12)) < 1
+                            && abs(bar.frame.maxY - (page.maxY - 12)) < 1,
+                        "\(NSStringFromRect(bar.frame)) in \(NSStringFromRect(page))")
+                }
+                c.closeFindBar()
+                check("Esc closes it", !c.isFindOpen && c.find.count == 0)
+                // Renaming a tab: the name sticks through the page's own title.
+                let id = c.activeTabID!
+                c.renameTab(id, to: "My notes")
+                check("rename a tab", c.tabData(id)?.displayTitle == "My notes")
+                c.navigate(to: "data:text/html,<title>Other title</title>")
+            }),
+            (1.0, {
+                let id = c.activeTabID!
+                check("the name survives a page load", c.tabData(id)?.displayTitle == "My notes",
+                      c.tabData(id)?.displayTitle ?? "-")
+                c.renameTab(id, to: "")
+                check("an empty name gives the page's title back",
+                      c.tabData(id)?.displayTitle == "Other title", c.tabData(id)?.displayTitle ?? "-")
+                // ⌘W on everything: today's tabs close one by one, then
+                // nothing is open; pinned tabs are never opened on their own.
+                c.newTab(url: page("Close me"))
+            }),
+            (0.6, {
+                var pinnedOpened = false
+                var steps = 0
+                while let id = c.activeTabID, steps < 20 {
+                    c.closeTab(id)
+                    steps += 1
+                    if let now = c.activeTabID, c.tabData(now)?.isPinned == true { pinnedOpened = true }
+                }
+                check("closing everything ends with nothing open", c.activeTabID == nil && c.nothingOpen,
+                      "after \(steps) closes")
+                check("no pinned tab opened on its own", !pinnedOpened)
+                check("pinned tabs are still there", !c.activeSpace.pinnedTabs.isEmpty)
+                c.closeActiveTab()
+                check("⌘W with nothing open does nothing", c.activeTabID == nil)
             }),
             (0.8, {
                 // Many spaces: the inactive ones shrink to dots.

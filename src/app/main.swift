@@ -21,6 +21,9 @@ if Diagnostics.screenIndex != nil {
     }
 }
 
+// Links and files from other apps (cha as the default browser).
+URLOpener.shared.install()
+
 let launcher = Launcher()
 ChaEngine.shared.delegate = launcher
 
@@ -49,6 +52,8 @@ final class Launcher: NSObject, ChaEngineDelegate {
             NSApp.activate(ignoringOtherApps: true)
         }
         controller.showWindow()
+        URLOpener.shared.install()
+        URLOpener.shared.controller = controller
         if let scenario = ProcessInfo.processInfo.environment["CHA_TEST"] {
             TestScenarios.run(scenario, controller: controller)
         }

@@ -27,8 +27,10 @@ enum TestScenarios {
             // 1114×669 window), for a side-by-side picture.
             NSApp.appearance = NSAppearance(named: .darkAqua)
             var space = controller.activeSpace
+            space.name = "Work"
+            space.symbol = "calendar"
             let names = [
-                "Work", "Timeline - CTD Services Plan", "Confluence", "Calendar", "Home",
+                "Timeline - CTD Services Plan", "Confluence", "Calendar", "Home",
                 "All Projects", "Rare", "Service Planning", "Road Map Prototype",
                 "[OST Service Team] release notes",
             ]
@@ -46,9 +48,57 @@ enum TestScenarios {
                 window.setFrame(frame, display: true)
             }
             controller.setSidebarWidth(227)
-            controller.activateTab(space.tabs[1].id)
+            controller.activateTab(space.tabs[0].id)
             at(2) { shot("arclike") }
             at(3) { NSApp.terminate(nil) }
+
+        case "find":
+            // What ⌘F does: the key as macOS delivers it to the page's window,
+            // then Chrome's own Find command; the windows are listed after each.
+            at(1) {
+                controller.navigate(
+                    to: "data:text/html,<title>Find</title><p>alpha beta gamma beta</p>")
+            }
+            at(3) { listWindows("before") }
+            at(3.5) {
+                guard let page = controller.activeTab?.nativeWindow,
+                    let event = NSEvent.keyEvent(
+                        with: .keyDown, location: .zero, modifierFlags: [.command],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: page.windowNumber, context: nil, characters: "f",
+                        charactersIgnoringModifiers: "f", isARepeat: false, keyCode: 3)
+                else { return }
+                NSLog("FIND menu handles ⌘F: %d", NSApp.mainMenu?.performKeyEquivalent(with: event) == true ? 1 : 0)
+                page.sendEvent(event)
+            }
+            at(5) { listWindows("after ⌘F") }
+            at(5.5) {
+                let tab = controller.activeTab
+                NSLog("FIND can execute IDC_FIND: %d", tab?.canExecuteChromeCommand(37000) == true ? 1 : 0)
+                tab?.executeChromeCommand(37000)
+            }
+            at(7) { listWindows("after IDC_FIND") }
+            at(8) { NSApp.terminate(nil) }
+
+        case "openurl":
+            // A link from another app, as the GetURL Apple event delivers it.
+            at(1.5) {
+                let event = NSAppleEventDescriptor(
+                    eventClass: AEEventClass(kInternetEventClass), eventID: AEEventID(kAEGetURL),
+                    targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID),
+                    transactionID: AETransactionID(kAnyTransactionID))
+                event.setParam(
+                    NSAppleEventDescriptor(string: "data:text/html,<title>From outside</title>"),
+                    forKeyword: keyDirectObject)
+                URLOpener.shared.handleGetURL(event, withReplyEvent: NSAppleEventDescriptor.null())
+            }
+            at(3) {
+                let ok = controller.activeTab?.currentURL.contains("From outside") == true
+                NSLog("CHECK %@ link from another app opens a tab", ok ? "ok  " : "FAIL")
+                NSLog("CHECKS passed=%d failed=%d", ok ? 1 : 0, ok ? 0 : 1)
+                SpaceChecks.failed += ok ? 0 : 1
+                NSApp.terminate(nil)
+            }
 
         case "shot":
             at(2) { shot("look") }
@@ -410,7 +460,7 @@ extension TestScenarios {
         NSApp.windows.filter { $0.isVisible }
     }
 
-    private static func listWindows(_ label: String) {
+    static func listWindows(_ label: String) {
         for window in NSApp.windows {
             NSLog(
                 "WINDOW %@: class=%@ title=%@ frame=%@ visible=%d key=%d children=%d",

@@ -14,8 +14,11 @@ struct TabData: Codable, Identifiable, Equatable {
     var pinnedURL: String?
     var folderID: UUID?
     var lastActive: Date?
+    // A name given by hand; the page's own title no longer replaces it.
+    var customTitle: String?
 
     var displayTitle: String {
+        if let customTitle, !customTitle.isEmpty { return customTitle }
         if !title.isEmpty { return title }
         return displayHost(url) ?? url
     }

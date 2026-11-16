@@ -15,6 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)tab:(ChaTab*)tab requestsNewTabWithURL:(NSString*)url;
 // The web content closed itself.
 - (void)tabDidClose:(ChaTab*)tab;
+@optional
+// Find in page: |count| matches, the |active|-th selected (1-based).
+- (void)tab:(ChaTab*)tab didFindCount:(int)count active:(int)active final:(BOOL)final;
 @end
 
 // One tab: a frameless Chrome-style CEF window hosting a single browser. On
@@ -44,6 +47,14 @@ NS_ASSUME_NONNULL_BEGIN
 // Synthesizes a real user click in the page, at view coordinates.
 - (void)clickAtX:(int)x y:(int)y;
 - (void)close;
+// The page's rounded corners (0 in full screen).
+- (void)setCornerRadius:(CGFloat)radius;
+// Chrome's own commands (cef_command_ids.h), e.g. IDC_FIND = 37000.
+- (BOOL)canExecuteChromeCommand:(int)commandID;
+- (void)executeChromeCommand:(int)commandID;
+// Find in page through CEF, without Chrome's find bar.
+- (void)find:(NSString*)text forward:(BOOL)forward findNext:(BOOL)findNext;
+- (void)stopFinding:(BOOL)clearSelection;
 
 @end
 

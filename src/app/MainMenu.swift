@@ -14,6 +14,12 @@ enum MainMenu {
             withTitle: "About cha", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: "")
         app.addItem(.separator())
+        let makeDefault = NSMenuItem(
+            title: "Make cha the Default Browser",
+            action: #selector(MenuTarget.makeDefaultBrowser), keyEquivalent: "")
+        makeDefault.target = target
+        app.addItem(makeDefault)
+        app.addItem(.separator())
         app.addItem(
             withTitle: "Hide cha", action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h")
@@ -55,6 +61,10 @@ enum MainMenu {
         edit.addItem(
             withTitle: "Select All", action: #selector(NSText.selectAll(_:)),
             keyEquivalent: "a")
+        edit.addItem(.separator())
+        edit.add("Find…", "f", target, #selector(MenuTarget.findInPage))
+        edit.add("Find Next", "g", target, #selector(MenuTarget.findNext))
+        edit.add("Find Previous", "g", target, #selector(MenuTarget.findPrevious), [.command, .shift])
         bar.addItem(submenu: edit, title: "Edit")
 
         let view = NSMenu(title: "View")
@@ -156,7 +166,17 @@ private extension NSMenu {
 }
 
 // Menu items need an Objective-C target that outlives the menu.
-final class MenuTarget: NSObject {
+final class MenuTarget: NSObject, NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(makeDefaultBrowser) {
+            let isDefault = URLOpener.isDefault
+            item.title = isDefault ? "cha Is the Default Browser" : "Make cha the Default Browser"
+            item.state = isDefault ? .on : .off
+            return !isDefault
+        }
+        return true
+    }
+
     static let shared = MenuTarget()
     var controller: BrowserController?
 
@@ -188,6 +208,10 @@ final class MenuTarget: NSObject {
         c.addToFavorites(id)
     }
     @objc func copyLink() { controller?.copyLink() }
+    @objc func makeDefaultBrowser() { URLOpener.makeDefault() }
+    @objc func findInPage() { controller?.openFindBar() }
+    @objc func findNext() { controller?.findNext(forward: true) }
+    @objc func findPrevious() { controller?.findNext(forward: false) }
     @objc func duplicateTab() {
         guard let c = controller, let id = c.activeTabID else { return }
         c.duplicateTab(id)

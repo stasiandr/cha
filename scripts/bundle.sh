@@ -18,4 +18,7 @@ ninja -C build cha
 mkdir -p build/cha.app
 rsync -a --delete build/src/Release/cha.app/ build/cha.app/
 [ -n "$stamp" ] && echo "$stamp" > build/cha.stamp
+# Tell LaunchServices about this build, so it can be the default browser.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f build/cha.app 2>/dev/null || true
 echo "built build/cha.app"

@@ -58,6 +58,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         return constraint
     }()
     var commandPanel: CommandPanel?
+    var findPanel: CommandPanel?
+    let find = FindModel()
     var commandMode: CommandMode = .newTab
     var commandKeyMonitor: Any?
     var swipeMonitor: Any?
@@ -128,6 +130,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         contentWell = well
 
         let sidebar = NSHostingView(rootView: SidebarView(controller: self))
+        // The width is ours (sidebarWidth, which follows the window); left to
+        // itself the hosting view pins its width to the SwiftUI content's
+        // size, wins against the width constraint, and the page and the
+        // sidebar drift apart when the window is resized.
+        sidebar.sizingOptions = []
         sidebarView = sidebar
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(sidebar)
@@ -174,21 +181,31 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             DispatchQueue.main.async { self?.applySpaceTint(animated: false) }
         }
 
-        activateTab(activeSpace.activeTabID ?? activeSpace.tabs.first?.id)
+        activateTab(activeSpace.activeTabID)
     }
 
     static let contentCornerRadius: CGFloat = 12
 
     // Where a tab's window sits, in the main window's own coordinates.
+    // In a window the page is a card with a margin; in full screen it runs
+    // to the screen's edges (and the sidebar's), no margin, no corners.
     var contentLocalRect: NSRect {
         guard let content = window?.contentView else { return .zero }
-        let inset = Self.contentInset
+        let inset = isFullscreen ? 0 : Self.contentInset
         let left = sidebarVisible ? sidebarWidth : inset
-        let top = isFullscreen ? inset : 0  // The titlebar area stays clickable.
         return NSRect(
             x: left, y: inset,
             width: max(content.bounds.width - left - inset, 100),
-            height: max(content.bounds.height - inset - top - inset, 100))
+            height: max(content.bounds.height - 2 * inset, 100))
+    }
+
+    var pageCornerRadius: CGFloat { isFullscreen ? 0 : Self.contentCornerRadius }
+
+    // Corners and shadow follow the mode, on the card and every page.
+    func applyPageShape() {
+        contentWell?.layer?.cornerRadius = pageCornerRadius
+        contentWell?.layer?.shadowOpacity = isFullscreen ? 0 : 0.22
+        for tab in liveTabs.values { tab.setCornerRadius(pageCornerRadius) }
     }
 
     // The same rectangle in screen coordinates, where a CEF window lives.
@@ -199,6 +216,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     private func layoutActiveTab() {
         layoutContentWell()
+        repositionFindBar()
         guard let id = activeSpace.activeTabID, let tab = liveTabs[id],
             let native = tab.nativeWindow
         else { return }
@@ -211,7 +229,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard let well = contentWell else { return }
         let rect = contentLocalRect
         well.frame = rect
-        let radius = Self.contentCornerRadius
+        let radius = pageCornerRadius
         well.layer?.shadowPath =
             CGPath(
                 roundedRect: CGRect(origin: .zero, size: rect.size),
@@ -266,12 +284,19 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func windowDidEnterFullScreen(_ notification: Notification) {
         isFullscreen = true
         updateTrafficLights()
+        applyPageShape()
         layoutActiveTab()
+    }
+
+    func windowWillExitFullScreen(_ notification: Notification) {
+        isFullscreen = false
+        applyPageShape()
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
         isFullscreen = false
         updateTrafficLights()
+        applyPageShape()
         layoutActiveTab()
     }
 
@@ -349,6 +374,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func activateTab(_ id: UUID?, transition: PageTransition = .fade) {
+        if id != activeTabID { closeFindBar() }
         guard let id, let data = tabData(id) else {
             hideAllTabs()
             addressText = ""
@@ -363,6 +389,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         addressText = data.url
 
         let tab = liveTab(id, url: data.url)
+        contentWell?.isHidden = false
         showOnly(tabID: id, transition: transition)
         canGoBack = tab.canGoBack
         canGoForward = tab.canGoForward
@@ -376,22 +403,23 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if let existing = liveTabs[id] { return existing }
         let tab = ChaTab(url: url, screenFrame: contentScreenRect)
         tab.delegate = self
+        tab.setCornerRadius(pageCornerRadius)
         liveTabs[id] = tab
         tabIDsByObject[ObjectIdentifier(tab)] = id
         Diagnostics.mark("first-tab-created")
         return tab
     }
 
-    // How the page changes. Arc doesn't cut from one page to the next: a tab
-    // crossfades in, and a space's page slides in from the side the space
-    // comes from, together with the sidebar.
+    // How the page changes: never a cut, never a show. A tab crossfades in
+    // 100 ms, a space's page in 150 ms while the sidebar slides.
     enum PageTransition: Equatable {
         case none
         case fade
         case slide(forward: Bool)
     }
 
-    static let slideDistance: CGFloat = 36
+    // The page doesn't travel: moving it drew the eye away from the sidebar.
+    static let slideDistance: CGFloat = 0
 
     func showOnly(tabID: UUID, transition: PageTransition = .none) {
         guard let window else { return }
@@ -428,7 +456,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         incoming.setFrame(target.offsetBy(dx: dx, dy: 0), display: true)
         front(incoming)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = dx == 0 ? 0.16 : 0.3
+            context.duration = transition == .fade ? 0.1 : Self.switchDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             incoming.animator().alphaValue = 1
             if dx != 0 { incoming.animator().setFrame(target, display: true) }
@@ -460,7 +488,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // The space's page slides in as the sidebar starts sliding, not after.
     func revealSpace(_ spaceID: UUID, forward: Bool) {
         guard let space = space(spaceID),
-            let id = space.activeTabID ?? space.tabs.first?.id,
+            let id = space.activeTabID,
             let data = tabData(id)
         else {
             hideAllTabs()
@@ -470,7 +498,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         showOnly(tabID: id, transition: .slide(forward: forward))
     }
 
+    // Nothing open: no page, no card, just the window's colour.
+    var nothingOpen: Bool { activeTab == nil }
+
     private func hideAllTabs() {
+        contentWell?.isHidden = true
         for tab in liveTabs.values {
             guard let native = tab.nativeWindow else { continue }
             if native.parent != nil { window.removeChildWindow(native) }
@@ -516,8 +548,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if space.id == activeSpaceID { activateTab(space.activeTabID) }
     }
 
+    // After ⌘W: the next of today's tabs, or nothing open at all. Pinned tabs
+    // and favourites are never opened on their own (closing one after another
+    // used to cycle through them forever).
     private func activateNeighbor(of id: UUID, in space: SpaceData) {
-        let next = space.unpinnedTabs.first ?? space.pinnedTabs.first { $0.id != id }
+        let next = space.unpinnedTabs.first { $0.id != id }
         var space = space
         space.activeTabID = next?.id
         replace(space)
@@ -607,7 +642,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if wasActive {
             // The tab's window belongs to the other space now.
             var space = activeSpace
-            space.activeTabID = space.unpinnedTabs.first?.id ?? space.pinnedTabs.first?.id
+            space.activeTabID = space.unpinnedTabs.first?.id
             replace(space)
             activateTab(space.activeTabID)
         }
@@ -656,6 +691,13 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         update(tabID: id) { $0.url = pinned }
         if let tab = liveTabs[id] { tab.loadURL(pinned) }
         if activeSpace.activeTabID == id { addressText = pinned }
+    }
+
+    // Renaming a tab; an empty name gives it back the page's title.
+    func renameTab(_ id: UUID, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        update(tabID: id) { $0.customTitle = name.isEmpty ? nil : name }
+        if activeTabID == id, let tab = tabData(id) { window?.title = tab.displayTitle }
     }
 
     func duplicateTab(_ id: UUID) {
@@ -754,7 +796,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if let active = space.activeTabID, !space.tabs.contains(where: { $0.id == active }),
             !favorites.contains(where: { $0.id == active })
         {
-            space.activeTabID = space.pinnedTabs.first?.id
+            space.activeTabID = nil
         }
         replace(space)
         if space.id == activeSpaceID { activateTab(space.activeTabID) }

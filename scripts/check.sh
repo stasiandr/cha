@@ -65,6 +65,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/sp
   echo "spaces FAILED (exit $code)"; failed=$((failed + 1))
 fi
 
+step "links from other apps"
+run_scenario openurl 30; code=$?
+grep -E 'CHECK ' build/check/openurl.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=1 failed=0' build/check/openurl.log; then
+  echo "links FAILED"; failed=$((failed + 1))
+fi
+
 if [ "$mode" = window ]; then
   step "ui (clicks; hover and drags only with the real cursor)"
   run_scenario ui 60; code=$?

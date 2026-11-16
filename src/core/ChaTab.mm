@@ -4,6 +4,7 @@
 
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+#include "include/cef_find_handler.h"
 #include "include/views/cef_browser_view.h"
 #include "include/views/cef_fill_layout.h"
 #include "include/views/cef_window.h"
@@ -76,6 +77,7 @@ class FaviconCallback : public CefDownloadImageCallback {
 // Client and window delegate for a single tab.
 class TabHost : public CefClient,
                 public CefDisplayHandler,
+                public CefFindHandler,
                 public CefLifeSpanHandler,
                 public CefLoadHandler,
                 public CefWindowDelegate {
@@ -92,6 +94,20 @@ class TabHost : public CefClient,
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+  CefRefPtr<CefFindHandler> GetFindHandler() override { return this; }
+
+  // CefFindHandler
+  void OnFindResult(CefRefPtr<CefBrowser>,
+                    int,
+                    int count,
+                    const CefRect&,
+                    int activeMatchOrdinal,
+                    bool finalUpdate) override {
+    ChaTab* tab = tab_;
+    if ([tab.delegate respondsToSelector:@selector(tab:didFindCount:active:final:)]) {
+      [tab.delegate tab:tab didFindCount:count active:activeMatchOrdinal final:finalUpdate];
+    }
+  }
 
   // CefDisplayHandler
   void OnTitleChange(CefRefPtr<CefBrowser>, const CefString& title) override {
@@ -209,10 +225,12 @@ CefRect ScreenRectToCef(NSRect frame) {
 
 @implementation ChaTab {
   CefRefPtr<TabHost> _host;
+  CGFloat _cornerRadius;
 }
 
 - (instancetype)initWithURL:(NSString*)url screenFrame:(NSRect)screenFrame {
   self = [super init];
+  _cornerRadius = 12;
   _currentURL = [url copy];
   _title = @"";
   _host = new TabHost(self, url.UTF8String, ScreenRectToCef(screenFrame));
@@ -285,6 +303,36 @@ CefRect ScreenRectToCef(NSRect frame) {
   host->SendMouseClickEvent(event, MBT_LEFT, true, 1);
 }
 
+- (BOOL)canExecuteChromeCommand:(int)commandID {
+  auto browser = _host ? _host->browser() : nullptr;
+  return browser && browser->GetHost()->CanExecuteChromeCommand(commandID);
+}
+
+- (void)executeChromeCommand:(int)commandID {
+  if (auto browser = _host ? _host->browser() : nullptr) {
+    browser->GetHost()->ExecuteChromeCommand(commandID, CEF_WOD_CURRENT_TAB);
+  }
+}
+
+- (void)find:(NSString*)text forward:(BOOL)forward findNext:(BOOL)findNext {
+  if (auto browser = _host ? _host->browser() : nullptr) {
+    browser->GetHost()->Find(text.UTF8String, forward, false, findNext);
+  }
+}
+
+- (void)stopFinding:(BOOL)clearSelection {
+  if (auto browser = _host ? _host->browser() : nullptr) {
+    browser->GetHost()->StopFinding(clearSelection);
+  }
+}
+
+- (void)setCornerRadius:(CGFloat)radius {
+  _cornerRadius = radius;
+  NSWindow* native = self.nativeWindow;
+  native.contentView.wantsLayer = YES;
+  native.contentView.layer.cornerRadius = radius;
+}
+
 - (void)close {
   if (_host && _host->window) {
     _host->window->Close();
@@ -303,7 +351,7 @@ CefRect ScreenRectToCef(NSRect frame) {
   native.backgroundColor = NSColor.clearColor;
   native.opaque = NO;
   native.contentView.wantsLayer = YES;
-  native.contentView.layer.cornerRadius = 12;
+  native.contentView.layer.cornerRadius = _cornerRadius;
   native.contentView.layer.masksToBounds = YES;
   [self.delegate tabDidBecomeReady:self];
 }
