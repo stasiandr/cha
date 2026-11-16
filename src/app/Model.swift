@@ -191,9 +191,10 @@ struct BrowserState: Codable {
     var archive: [ArchivedTab]?
 
     static var initial: BrowserState {
-        let space = SpaceData(
+        var space = SpaceData(
             name: "Personal", symbol: "person", theme: .presets[0],
             tabs: [TabData(url: "https://example.com")])
+        space.activeTabID = space.tabs.first?.id
         return BrowserState(spaces: [space], activeSpaceID: space.id)
     }
 }

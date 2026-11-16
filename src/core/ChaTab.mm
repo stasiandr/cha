@@ -1,9 +1,11 @@
 #import "ChaTab.h"
 
+#include <map>
 #include <string>
 
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+#include "include/cef_download_handler.h"
 #include "include/cef_find_handler.h"
 #include "include/views/cef_browser_view.h"
 #include "include/views/cef_fill_layout.h"
@@ -75,8 +77,35 @@ class FaviconCallback : public CefDownloadImageCallback {
 };
 
 // Client and window delegate for a single tab.
+// Live downloads' callbacks, for cancelling from the downloads list.
+std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>>& DownloadCallbacks() {
+  static std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>> callbacks;
+  return callbacks;
+}
+
+// Where a download goes: ~/Downloads (CHA_DOWNLOADS for the checks), with
+// " (1)", " (2)"… when the name is taken.
+NSString* DownloadPath(NSString* suggested) {
+  NSString* dir = NSProcessInfo.processInfo.environment[@"CHA_DOWNLOADS"];
+  if (dir.length == 0) {
+    dir = [NSSearchPathForDirectoriesInDomains(NSDownloadsDirectory, NSUserDomainMask, YES) firstObject];
+  }
+  [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  NSString* name = suggested.length > 0 ? suggested.lastPathComponent : @"download";
+  NSString* base = name.stringByDeletingPathExtension;
+  NSString* ext = name.pathExtension;
+  NSString* path = [dir stringByAppendingPathComponent:name];
+  for (int i = 1; [NSFileManager.defaultManager fileExistsAtPath:path]; i++) {
+    NSString* numbered = [NSString stringWithFormat:@"%@ (%d)", base, i];
+    if (ext.length > 0) numbered = [numbered stringByAppendingPathExtension:ext];
+    path = [dir stringByAppendingPathComponent:numbered];
+  }
+  return path;
+}
+
 class TabHost : public CefClient,
                 public CefDisplayHandler,
+                public CefDownloadHandler,
                 public CefFindHandler,
                 public CefLifeSpanHandler,
                 public CefLoadHandler,
@@ -95,6 +124,48 @@ class TabHost : public CefClient,
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<CefFindHandler> GetFindHandler() override { return this; }
+  CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+
+  // CefDownloadHandler: the app's own list instead of Chrome's bubble,
+  // which has no toolbar to sit in here.
+  bool OnBeforeDownload(CefRefPtr<CefBrowser>,
+                        CefRefPtr<CefDownloadItem> item,
+                        const CefString& suggested_name,
+                        CefRefPtr<CefBeforeDownloadCallback> callback) override {
+    callback->Continue(DownloadPath(ToNSString(suggested_name)).UTF8String, false);
+    return true;
+  }
+
+  void OnDownloadUpdated(CefRefPtr<CefBrowser>,
+                         CefRefPtr<CefDownloadItem> item,
+                         CefRefPtr<CefDownloadItemCallback> callback) override {
+    if (!item->IsValid()) {
+      return;
+    }
+    uint32_t identifier = item->GetId();
+    NSString* state = item->IsComplete()      ? @"complete"
+                      : item->IsCanceled()    ? @"canceled"
+                      : item->IsInterrupted() ? @"interrupted"
+                                              : @"progress";
+    if ([state isEqualToString:@"progress"]) {
+      DownloadCallbacks()[identifier] = callback;
+    } else {
+      DownloadCallbacks().erase(identifier);
+    }
+    NSString* path = ToNSString(item->GetFullPath());
+    NSString* name = path.length > 0 ? path.lastPathComponent : ToNSString(item->GetSuggestedFileName());
+    NSDictionary* info = @{
+      @"id" : @(identifier),
+      @"url" : ToNSString(item->GetURL()),
+      @"name" : name ?: @"",
+      @"path" : path ?: @"",
+      @"received" : @(item->GetReceivedBytes()),
+      @"total" : @(item->GetTotalBytes()),
+      @"speed" : @(item->GetCurrentSpeed()),
+      @"state" : state,
+    };
+    [NSNotificationCenter.defaultCenter postNotificationName:@"ChaDownloadUpdated" object:nil userInfo:info];
+  }
 
   // CefFindHandler
   void OnFindResult(CefRefPtr<CefBrowser>,
@@ -222,6 +293,17 @@ CefRect ScreenRectToCef(NSRect frame) {
 }
 
 }  // namespace
+
+@implementation ChaTab (Downloads)
++ (void)cancelDownload:(uint32_t)downloadID {
+  auto& callbacks = DownloadCallbacks();
+  auto found = callbacks.find(downloadID);
+  if (found != callbacks.end()) {
+    found->second->Cancel();
+    callbacks.erase(found);
+  }
+}
+@end
 
 @implementation ChaTab {
   CefRefPtr<TabHost> _host;

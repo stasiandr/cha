@@ -41,8 +41,9 @@ struct SidebarView: View {
         case .editSpace(let id, let isNew):
             SpaceEditorView(controller: controller, spaceID: id, isNew: isNew)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-        case .archive:
-            ArchiveView(controller: controller)
+        case .downloads:
+            DownloadsView(controller: controller)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 

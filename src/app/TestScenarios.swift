@@ -52,6 +52,26 @@ enum TestScenarios {
             at(2) { shot("arclike") }
             at(3) { NSApp.terminate(nil) }
 
+        case "quitkey":
+            // ⌘Q as the keyboard sends it, with the page's window in front.
+            at(2.5) {
+                guard let page = controller.activeTab?.nativeWindow,
+                    let event = NSEvent.keyEvent(
+                        with: .keyDown, location: .zero, modifierFlags: [.command],
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: page.windowNumber, context: nil, characters: "q",
+                        charactersIgnoringModifiers: "q", isARepeat: false, keyCode: 12)
+                else { return NSLog("QUITKEY no page window") }
+                NSLog("QUITKEY sending ⌘Q, key window=%@", String(describing: NSApp.keyWindow.map { type(of: $0) }))
+                NSApp.sendEvent(event)
+            }
+            at(8) { NSLog("QUITKEY still running 5.5 s after ⌘Q") }
+
+        case "closewindow":
+            // The red button: performClose on the main window.
+            at(2.5) { controller.window.performClose(nil) }
+            at(8) { NSLog("QUITKEY still running 5.5 s after closing the window") }
+
         case "find":
             // What ⌘F does: the key as macOS delivers it to the page's window,
             // then Chrome's own Find command; the windows are listed after each.

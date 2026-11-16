@@ -265,17 +265,13 @@ extension BrowserController {
             let alert = NSAlert()
             alert.messageText = "Delete “\(space.name)”?"
             alert.informativeText =
-                "Its \(space.tabs.count) tab\(space.tabs.count == 1 ? "" : "s") will be closed. "
-                + "Unpinned ones stay in the archive."
+                "Its \(space.tabs.count) tab\(space.tabs.count == 1 ? "" : "s") will be closed."
             alert.addButton(withTitle: "Delete Space")
             alert.addButton(withTitle: "Cancel")
             alert.buttons.first?.hasDestructiveAction = true
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
-        for tab in space.tabs {
-            unload(tab.id)
-            if !tab.isPinned { addToArchive(tab, spaceID: nil) }
-        }
+        for tab in space.tabs { unload(tab.id) }
         if id == activeSpaceID {
             let next = spaces[index > 0 ? index - 1 : index + 1].id
             commitSpace(next)

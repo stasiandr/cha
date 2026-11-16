@@ -104,6 +104,11 @@ struct CommandBarView: View {
         }
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: .black.opacity(0.28), radius: 18, y: 6)
+        .padding(12)
+        // The card hangs from the top of a fixed-size panel; the rest of the
+        // panel is empty and lets clicks through.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { focused = true }
     }
 

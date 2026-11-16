@@ -101,8 +101,7 @@ enum MainMenu {
             "Clear Today's Tabs", "k", target, #selector(MenuTarget.clearToday),
             [.command, .shift])
         tabs.add(
-            "Archived Tabs", "a", target, #selector(MenuTarget.showArchive),
-            [.command, .option])
+            "Downloads", "l", target, #selector(MenuTarget.showDownloads), [.command, .shift])
         bar.addItem(submenu: tabs, title: "Tab")
 
         // Spaces: ⌃1…⌃9 jump straight to one, as in Arc.
@@ -239,10 +238,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
         c.resetToPinnedURL(id)
     }
     @objc func clearToday() { controller?.clearToday() }
-    @objc func showArchive() {
-        guard let c = controller else { return }
-        c.sidebarPage = c.sidebarPage == .archive ? .tabs : .archive
-    }
+    @objc func showDownloads() { controller?.toggleDownloads() }
     // Chromium's own password manager, reachable without a toolbar.
     @objc func passwords() {
         controller?.newTab(url: "chrome://password-manager/passwords")

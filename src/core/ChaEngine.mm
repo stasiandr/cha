@@ -37,6 +37,15 @@ static double ChaMillisSinceStart() {
   handlingSendEvent_ = handlingSendEvent;
 }
 - (void)sendEvent:(NSEvent*)event {
+  // ⌘Q goes to our quit before any window sees it: with a page in front,
+  // Chromium's own window took it and started a shutdown of its own that
+  // left the message loop running forever.
+  if (event.type == NSEventTypeKeyDown &&
+      (event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) == NSEventModifierFlagCommand &&
+      [event.charactersIgnoringModifiers isEqualToString:@"q"]) {
+    [self terminate:self];
+    return;
+  }
   CefScopedSendingEvent sendingEventScoper;
   [super sendEvent:event];
 }
@@ -65,6 +74,15 @@ static BOOL ChaQuiet() {
 }
 - (void)terminate:(id)sender {
   fprintf(stderr, "TIMING quit-requested %.0f\n", ChaMillisSinceStart());
+  // Whatever happens below, the app is gone in 3 s: quitting must never
+  // leave a process nobody can close.
+  static dispatch_once_t watchdog;
+  dispatch_once(&watchdog, ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      fprintf(stderr, "TIMING quit-forced %.0f\n", ChaMillisSinceStart());
+      _exit(0);
+    });
+  });
   // The browsers have to close before the loop may end; the delegate does
   // that and calls -quit once they have.
   id<ChaEngineDelegate> delegate = ChaEngine.shared.delegate;

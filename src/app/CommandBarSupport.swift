@@ -37,7 +37,8 @@ extension BrowserController {
             defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // The panel keeps one size; the card inside casts its own shadow.
+        panel.hasShadow = false
         panel.level = .floating
         panel.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
         let hosting = NSHostingView(rootView: CommandBarView(controller: self))
@@ -48,15 +49,22 @@ extension BrowserController {
         return panel
     }
 
-    // Field plus one row per result, anchored near the top of the content.
-    private var commandPanelFrame: NSRect {
+    // One size for the panel, whatever the results: room for the field and
+    // six rows, the card at its top and clear (click-through) below it. It
+    // used to be resized to every new result count, which flickered. The
+    // field sits in the middle of the page, a little above centre, as Arc's.
+    static let commandWidth: CGFloat = 620
+    static let commandFieldHeight: CGFloat = 58
+    static let commandHeight: CGFloat = commandFieldHeight + 6 * 44 + 13 + 24
+
+    var commandPanelFrame: NSRect {
         let content = contentScreenRect
-        let width: CGFloat = min(620, content.width - 40)
-        let rows = CGFloat(commandResults.count)
-        let height = 58 + (rows > 0 ? rows * 44 + 13 : 0)
+        let width = min(Self.commandWidth, content.width - 40)
+        let fieldCentre = content.midY + content.height * 0.08
+        let top = fieldCentre + Self.commandFieldHeight / 2 + 12  // 12: room for the shadow.
         return NSRect(
-            x: content.midX - width / 2, y: content.maxY - height - 90,
-            width: width, height: height)
+            x: content.midX - width / 2, y: top - Self.commandHeight,
+            width: width, height: Self.commandHeight)
     }
 
     private func installCommandKeyMonitor() {
@@ -81,10 +89,10 @@ extension BrowserController {
         }
     }
 
-    // Called after the result list changes so the panel keeps its top edge.
     func repositionCommandPanel() {
         guard let panel = commandPanel, panel.isVisible else { return }
-        panel.setFrame(commandPanelFrame, display: true)
+        let frame = commandPanelFrame
+        if panel.frame != frame { panel.setFrame(frame, display: true) }
     }
 
     func refreshCommandResults() {
@@ -95,7 +103,6 @@ extension BrowserController {
         if query.lowercased().hasPrefix("otpauth://"), OTPAuth.parse(query) != nil {
             commandResults = [.addCode(uri: query)]
             commandSelection = 0
-            DispatchQueue.main.async { [weak self] in self?.repositionCommandPanel() }
             return
         }
 
@@ -124,12 +131,6 @@ extension BrowserController {
                             title: tab.displayTitle, url: tab.url))
                 }
             }
-            let archived = archive.filter {
-                $0.title.lowercased().contains(lowered) || $0.url.lowercased().contains(lowered)
-            }
-            for item in archived.prefix(2) {
-                results.append(.archived(id: item.id, title: item.title, url: item.url))
-            }
             results = Array(results.prefix(6))
 
             let target = normalizedURL(from: query)
@@ -142,7 +143,6 @@ extension BrowserController {
 
         commandResults = results
         commandSelection = min(commandSelection, max(results.count - 1, 0))
-        DispatchQueue.main.async { [weak self] in self?.repositionCommandPanel() }
     }
 
     func runSelectedCommand() {

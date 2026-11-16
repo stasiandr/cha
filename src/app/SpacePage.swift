@@ -445,9 +445,7 @@ struct BottomBar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            ChromeButton(symbol: "archivebox", help: "Archived tabs") {
-                controller.sidebarPage = controller.sidebarPage == .archive ? .tabs : .archive
-            }
+            DownloadsButton(controller: controller)
             Spacer(minLength: 0)
             GeometryReader { geometry in
                 let compact = CGFloat(controller.spaces.count) * 28 > geometry.size.width
@@ -461,20 +459,9 @@ struct BottomBar: View {
             }
             .frame(height: 28)
             Spacer(minLength: 0)
-            Menu {
-                Button("New Space") { controller.addSpace() }
-                Button("New Folder") { _ = controller.addFolder() }
-                Button("New Tab") { controller.openCommandBar(mode: .newTab) }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 26, height: 24)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("New space, folder or tab")
+            // Balances the downloads button, so the spaces stay centred.
+            // New spaces and folders come from the Spaces menu.
+            Color.clear.frame(width: 28, height: 1)
         }
     }
 

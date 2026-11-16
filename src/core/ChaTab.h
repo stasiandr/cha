@@ -62,4 +62,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+// Downloads are reported app-wide as the "ChaDownloadUpdated" notification
+// (id, url, name, path, received, total, speed, state); this cancels one.
+@interface ChaTab (Downloads)
++ (void)cancelDownload:(uint32_t)downloadID;
+@end
+
 NS_ASSUME_NONNULL_END

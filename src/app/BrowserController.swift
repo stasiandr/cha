@@ -28,7 +28,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     enum SidebarPage: Equatable {
         case tabs
         case editSpace(UUID, isNew: Bool)
-        case archive
+        case downloads
     }
     @Published var sidebarPage: SidebarPage = .tabs
 
@@ -82,7 +82,6 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         sidebarWidth = CGFloat(state.sidebarWidth ?? 225)
         super.init()
         sidebarFraction = CGFloat(state.sidebarFraction ?? Double(sidebarWidth) / 1280)
-        archiveStaleTabs()
         loadSavedFavicons()
     }
 
@@ -658,8 +657,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             let index = space.tabs.firstIndex(where: { $0.id == id })
         else { return }
         unload(id)
-        let tab = space.tabs.remove(at: index)
-        addToArchive(tab, spaceID: space.id)
+        space.tabs.remove(at: index)
         if space.activeTabID == id {
             // The next tab below, or above when it was the last one.
             let unpinned = space.tabs.filter { !$0.isPinned }
@@ -910,10 +908,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func clearToday(_ spaceID: UUID? = nil) {
         guard var space = spaces.first(where: { $0.id == (spaceID ?? activeSpaceID) })
         else { return }
-        for tab in space.unpinnedTabs {
-            unload(tab.id)
-            addToArchive(tab, spaceID: space.id)
-        }
+        for tab in space.unpinnedTabs { unload(tab.id) }
         space.tabs.removeAll { !$0.isPinned }
         if let active = space.activeTabID, !space.tabs.contains(where: { $0.id == active }),
             !favorites.contains(where: { $0.id == active })

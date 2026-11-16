@@ -142,6 +142,25 @@ enum SpaceChecks {
                 == BrowserController.contentCornerRadius)
     }
 
+    // ⌘W on everything: today's tabs close one by one, then nothing is open;
+    // pinned tabs are never opened on their own.
+    static func checkCloseEverything(_ c: BrowserController) {
+        var pinnedOpened = false
+        var steps = 0
+        while let id = c.activeTabID, steps < 20 {
+            c.closeTab(id)
+            steps += 1
+            if let now = c.activeTabID, let data = c.tabData(now), data.isPinned { pinnedOpened = true }
+        }
+        check(
+            "closing everything ends with nothing open", c.activeTabID == nil && c.nothingOpen,
+            "after \(steps) closes")
+        check("no pinned tab opened on its own", !pinnedOpened)
+        check("pinned tabs are still there", !c.activeSpace.pinnedTabs.isEmpty)
+        c.closeActiveTab()
+        check("⌘W with nothing open does nothing", c.activeTabID == nil)
+    }
+
     // Pages shown: exactly one, fully opaque, once a transition is over.
     static func checkOnePage(_ name: String, _ c: BrowserController) {
         let pages = (c.window.childWindows ?? []).filter { $0.isVisible && !($0 is NSPanel) }
@@ -182,8 +201,8 @@ enum SpaceChecks {
         return NSEvent(cgEvent: cg)
     }
 
-    // What a relaunch does with the saved state: today's tabs left alone for
-    // 12 hours go to the archive, pinned ones stay, favicons come back.
+    // What a relaunch does with the saved state: tabs stay where they were,
+    // however old (nothing is archived any more), and favicons come back.
     static func checkRelaunch(_ saved: BrowserState) {
         var state = saved
         let old = Date().addingTimeInterval(-13 * 3600)
@@ -204,10 +223,7 @@ enum SpaceChecks {
 
         let relaunched = BrowserController()
         let tabs = relaunched.spaces.flatMap(\.tabs)
-        check("stale today tab archived", !tabs.contains { $0.id == stale.id })
-        check(
-            "stale tab is in the archive",
-            relaunched.archive.contains { $0.url == "https://stale.example/" })
+        check("an old today tab is kept", tabs.contains { $0.id == stale.id })
         check("old pinned tab kept", tabs.contains { $0.id == keptPinned.id })
         check("favicon restored", relaunched.favicons[keptPinned.id] != nil)
         Persistence.save(saved)
@@ -223,7 +239,8 @@ enum SpaceChecks {
         let dark = NSAppearance(named: .darkAqua)
         let light = NSAppearance(named: .aqua)
 
-        sequence([
+        var steps: [(Double, () -> Void)] = []
+        steps += [
             (1.0, {
                 NSApp.appearance = light
                 personal = c.activeSpaceID
@@ -254,6 +271,8 @@ enum SpaceChecks {
             }),
             (0.4, { c.newTab(url: page("Two")) }),
             (0.4, { c.newTab(url: page("Three")) }),
+        ]
+        steps += [
             (1.0, {
                 let titles = c.activeSpace.unpinnedTabs.map(\.displayTitle)
                 check("new tabs on top", titles == ["Three", "Two", "One"], "\(titles)")
@@ -290,6 +309,8 @@ enum SpaceChecks {
                 c.selectSpace(personal)
                 check("switch is animated", c.pageAnimating)
             }),
+        ]
+        steps += [
             (0.25, {
                 check("switch done within 250 ms", c.activeSpaceID == personal && !c.pageAnimating)
             }),
@@ -316,6 +337,8 @@ enum SpaceChecks {
                 c.dragPage(by: -c.sidebarWidth * 0.1)
                 c.endPageDrag(velocity: 0)
             }),
+        ]
+        steps += [
             (0.7, {
                 check("short swipe springs back", c.activeSpaceID == personal)
                 check("spring back settles", c.pageOffset == 0)
@@ -351,23 +374,24 @@ enum SpaceChecks {
                 let passed = vertical.map { c.handleSwipe($0, overSidebar: true) != nil } ?? false
                 check("vertical scroll passes through", passed)
                 c.selectSpace(work, animated: false)
-                // Today's tabs go to the archive with Clear.
-                let today = c.activeSpace.unpinnedTabs.count
-                let archived = c.archive.count
+                // Clear closes today's tabs (there is no archive any more).
                 c.clearToday()
                 check("clear empties today", c.activeSpace.unpinnedTabs.isEmpty)
-                check("clear archives", c.archive.count == archived + today, "\(c.archive.count)")
                 check("clear keeps pinned", c.tabData(pinned) != nil)
-                c.sidebarPage = .archive
+                // ⇧⌘L: the downloads page slides up in place of the tabs.
+                c.toggleDownloads()
+                check("⇧⌘L opens downloads", c.sidebarPage == .downloads)
             }),
-            (0.6, { TestScenarios.shot("spaces-archive-dark") }),
+            (0.6, { TestScenarios.shot("spaces-downloads-dark") }),
             (0.2, {
-                let first = c.archive[0]
-                c.restoreArchived(first.id)
-                check("restore from archive", c.activeSpace.unpinnedTabs.first?.url == first.url)
+                c.toggleDownloads()
+                check("and ⇧⌘L again goes back", c.sidebarPage == .tabs)
+                c.newTab(url: page("Restored"))
                 // ⌘W on a pinned tab unloads it.
                 c.activateTab(pinned)
             }),
+        ]
+        steps += [
             (0.8, {
                 c.closeTab(pinned)
                 check("⌘W keeps a pinned tab", c.tabData(pinned) != nil)
@@ -411,6 +435,8 @@ enum SpaceChecks {
                 c.find.query = "beta"
                 c.search("beta", findNext: false)
             }),
+        ]
+        steps += [
             (1.0, {
                 check("find counts matches", c.find.count == 2, "\(c.find.count)")
                 c.findNext(forward: true)
@@ -454,21 +480,7 @@ enum SpaceChecks {
                 // nothing is open; pinned tabs are never opened on their own.
                 c.newTab(url: page("Close me"))
             }),
-            (0.6, {
-                var pinnedOpened = false
-                var steps = 0
-                while let id = c.activeTabID, steps < 20 {
-                    c.closeTab(id)
-                    steps += 1
-                    if let now = c.activeTabID, c.tabData(now)?.isPinned == true { pinnedOpened = true }
-                }
-                check("closing everything ends with nothing open", c.activeTabID == nil && c.nothingOpen,
-                      "after \(steps) closes")
-                check("no pinned tab opened on its own", !pinnedOpened)
-                check("pinned tabs are still there", !c.activeSpace.pinnedTabs.isEmpty)
-                c.closeActiveTab()
-                check("⌘W with nothing open does nothing", c.activeTabID == nil)
-            }),
+            (0.6, { checkCloseEverything(c) }),
             (0.8, {
                 // Many spaces: the inactive ones shrink to dots.
                 for _ in 0..<8 {
@@ -478,6 +490,8 @@ enum SpaceChecks {
                 c.selectSpace(work, animated: false)
                 NSApp.appearance = light
             }),
+        ]
+        steps += [
             (0.8, {
                 TestScenarios.shot("spaces-many-light")
                 for space in c.spaces where space.id != work && space.id != personal {
@@ -496,11 +510,11 @@ enum SpaceChecks {
                 check(
                     "themes saved",
                     state.spaces.first { $0.id == work }?.theme == SpaceTheme.presets[1])
-                check("archive saved", (state.archive?.count ?? 0) == c.archive.count)
                 checkRelaunch(state)
                 NSLog("CHECKS passed=%d failed=%d", passed, failed)
                 NSApp.terminate(nil)
             }),
-        ])
+        ]
+        sequence(steps)
     }
 }
