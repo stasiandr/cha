@@ -50,7 +50,8 @@ if [ "$mode" = full ]; then
   run_scenario codes 40
   grep -E 'CODES' build/check/codes.log | sed 's/^.*cha\[[^]]*\] //'
   # The filled field must hold exactly the code the generator gave.
-  fills=$(grep -cE 'CODES (fill|boxes) [A-Z]+ \[([0-9]+)\] expected=\1$' build/check/codes.log)
+  fills=$(sed -nE 's/.*CODES (fill|boxes) [A-Z]+ \[([0-9]+)\] expected=([0-9]+)$/\2 \3/p' \
+    build/check/codes.log | awk '$1 == $2' | wc -l | tr -d ' ')
   if grep -q 'FAIL' build/check/codes.log || [ "$fills" -ne 2 ]; then
     echo "codes FAILED"; failed=$((failed + 1))
   fi
