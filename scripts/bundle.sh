@@ -17,6 +17,9 @@ ninja -C build cha
 # Only what changed is copied: the bundle carries ~300 MB of Chromium.
 mkdir -p build/cha.app
 rsync -a --delete build/src/Release/cha.app/ build/cha.app/
+# The icon (scripts/make-icon.swift draws it). CMake's resource copy is not
+# run for a Swift target under Ninja, so it is put in here.
+cp src/mac/cha.icns build/cha.app/Contents/Resources/cha.icns
 [ -n "$stamp" ] && echo "$stamp" > build/cha.stamp
 # Tell LaunchServices about this build, so it can be the default browser.
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
