@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import SwiftUI
 
 // Launch and quit timing, plus the headless mode the checks run in.
 enum Diagnostics {
@@ -12,8 +13,18 @@ enum Diagnostics {
     // order), for windowed checks on a second monitor while someone works on
     // the first: the app never activates, so focus stays where it was, and
     // audio is muted.
-    static let screenIndex: Int? = ProcessInfo.processInfo.environment["CHA_SCREEN"]
-        .flatMap(Int.init)
+    static let screenIndex: Int? = {
+        guard let index = ProcessInfo.processInfo.environment["CHA_SCREEN"].flatMap(Int.init)
+        else { return nil }
+        return index
+    }()
+
+    // The chosen display may be gone (unplugged, asleep). Then the run goes
+    // off screen like a headless one rather than onto the display in use.
+    static var screenMissing: Bool {
+        guard let index = screenIndex else { return false }
+        return index < 0 || index >= NSScreen.screens.count
+    }
 
     // Don't take focus from whoever is at the Mac.
     static var quiet: Bool { headless || screenIndex != nil }
@@ -56,6 +67,37 @@ enum Diagnostics {
 // AppKit otherwise corrects.
 final class BrowserWindow: NSWindow {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        Diagnostics.headless ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+        // Off screen (headless) or on a chosen display (CHA_SCREEN): the
+        // frame stands as set, not pulled back onto the main display.
+        Diagnostics.quiet ? frameRect : super.constrainFrameRect(frameRect, to: screen)
     }
+}
+
+// Where SwiftUI put things, for the UI checks to click and drag on. Only
+// recorded in test runs (CHA_TEST set); keys like "tab:<uuid>".
+enum UIFrames {
+    static let enabled = ProcessInfo.processInfo.environment["CHA_TEST"] != nil
+    static var frames: [String: CGRect] = [:]  // In the sidebar's coordinates.
+}
+
+struct UIFrameRecorder: ViewModifier {
+    let key: String
+    func body(content: Content) -> some View {
+        if UIFrames.enabled {
+            content.background(
+                GeometryReader { geometry in
+                    let frame = geometry.frame(in: .global)
+                    Color.clear
+                        .onAppear { UIFrames.frames[key] = frame }
+                        .onChange(of: frame) { _, new in UIFrames.frames[key] = new }
+                        .onDisappear { UIFrames.frames[key] = nil }
+                })
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func uiFrame(_ key: String) -> some View { modifier(UIFrameRecorder(key: key)) }
 }

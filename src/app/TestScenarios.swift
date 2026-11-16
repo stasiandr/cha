@@ -18,6 +18,38 @@ enum TestScenarios {
         case "spaces":
             SpaceChecks.run(controller)
 
+        case "ui":
+            UIChecks.run(controller)
+
+        case "arclike":
+            // The same sidebar as the Arc reference screenshot (pinned tabs,
+            // the second one open, graphite theme, dark, ~193 pt sidebar, a
+            // 1114×669 window), for a side-by-side picture.
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+            var space = controller.activeSpace
+            let names = [
+                "Work", "Timeline - CTD Services Plan", "Confluence", "Calendar", "Home",
+                "All Projects", "Rare", "Service Planning", "Road Map Prototype",
+                "[OST Service Team] release notes",
+            ]
+            space.tabs = names.map {
+                var tab = TabData(url: "data:text/html,<title>\($0)</title>", isPinned: true)
+                tab.title = $0
+                return tab
+            }
+            space.theme = SpaceTheme.presets[8]
+            controller.replace(space)
+            controller.setSidebarWidth(193)
+            if let window = controller.window {
+                var frame = window.frame
+                frame.origin.y += frame.height - 669
+                frame.size = NSSize(width: 1114, height: 669)
+                window.setFrame(frame, display: true)
+            }
+            controller.activateTab(space.tabs[1].id)
+            at(2) { shot("arclike") }
+            at(3) { NSApp.terminate(nil) }
+
         case "shot":
             at(2) { shot("look") }
             at(3) { NSApp.terminate(nil) }
@@ -200,6 +232,7 @@ enum TestScenarios {
         let top = NSScreen.screens.first?.frame.maxY ?? 0
         let f = window.frame
         let rect = "\(Int(f.minX)),\(Int(top - f.maxY)),\(Int(f.width)),\(Int(f.height))"
+        NSLog("SHOT window %@ frame=%@ rect=%@ level=%d visible=%d", name, NSStringFromRect(f), rect, window.level.rawValue, window.isVisible ? 1 : 0)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = ["-x", "-R\(rect)", "build/shots/\(name).png"]
@@ -211,7 +244,7 @@ enum TestScenarios {
     // tab's page laid over the content area: works off screen and while the
     // display sleeps, unlike screencapture.
     static func shot(_ name: String) {
-        if !Diagnostics.headless { screenShot(name + "-window") }
+        if !Diagnostics.headless, !Diagnostics.screenMissing { screenShot(name + "-window") }
         guard let window = NSApp.windows.first(where: { $0 is BrowserWindow }),
             let content = window.contentView
         else { return }

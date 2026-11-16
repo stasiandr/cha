@@ -259,8 +259,7 @@ final class ThemeColorPanel: NSObject {
     private var spaceID: UUID?
 
     func open(for spaceID: UUID, current: SpaceTheme?, controller: BrowserController) {
-        self.spaceID = spaceID
-        self.controller = controller
+        attach(for: spaceID, controller: controller)
         let panel = NSColorPanel.shared
         panel.showsAlpha = false
         panel.isContinuous = true
@@ -270,7 +269,13 @@ final class ThemeColorPanel: NSObject {
         panel.orderFront(nil)
     }
 
-    @objc private func colorChanged(_ panel: NSColorPanel) {
+    // Points the panel's changes at a space without showing it (the checks).
+    func attach(for spaceID: UUID, controller: BrowserController) {
+        self.spaceID = spaceID
+        self.controller = controller
+    }
+
+    @objc func colorChanged(_ panel: NSColorPanel) {
         guard let spaceID, let controller else { return }
         controller.updateSpace(spaceID) { $0.theme = SpaceTheme(panel.color) }
     }

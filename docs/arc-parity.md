@@ -67,8 +67,34 @@ screen captures of it, pages included. The sidebar's first row shares the
 title bar with the traffic lights, as in Arc (reference: the user's Arc
 screenshots, 2026-11-16).
 
-Not covered by the automated checks (no headless path), still to be tried by
-hand: dragging tabs and space icons, the colour panel, the hover states. The swipe is checked through synthesized
+### Side by side with Arc
+
+`CHA_TEST=arclike` rebuilds the reference sidebar (same tabs, second one
+open, 193 pt sidebar, 1114×669 window, dark). Measured against the user's
+Arc screenshot at the same scale (1.625 px/pt there, from the traffic
+lights' 20 pt spacing):
+
+| | Arc | cha |
+|---|---|---|
+| traffic-light row → address pill top | 32 pt | 33 pt |
+| pill height | 31.5 pt | 32 pt |
+| tab row pitch / active card height | 36 / 31.5 pt | 36 / 32 pt |
+| pill edge → tab title | 30 pt | 30 pt |
+| tab title width ("Confluence") | 65 pt | 65 pt (12.5 pt font) |
+| sidebar → page card edge | 192 pt | 191 pt |
+| divider when today is empty | none | none |
+
+The comparison picture stays out of the repo (it shows private work data):
+build/shots/arc-vs-cha.png.
+
+### Interaction checks (`CHA_TEST=ui`, windowed)
+
+Clicks on tab rows and space icons go through real AppKit events and pass
+on any display. Hover and drags (tab onto a space icon, reordering tabs,
+reordering space icons) need the window server's cursor, so they move the
+real mouse and run only when the Mac is idle (`CHA_REAL_INPUT=1`, set by
+check.sh window); otherwise they are reported as skipped, not passed. The
+colour panel's live recolouring is checked through its action. The swipe is checked through synthesized
 scroll events fed to the handler; the direction for natural scrolling
 follows `isDirectionInvertedFromDevice`.
 

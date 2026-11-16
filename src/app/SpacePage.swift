@@ -43,11 +43,14 @@ struct SpacePageView: View {
 
     var body: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 // Arc shows no title over the tabs: pinned ones first, then
-                // the divider, then New Tab and today's.
+                // (only when both kinds are there) the divider, then New Tab
+                // and today's.
                 pinnedSection
-                if !space.pinnedTabs.isEmpty || !space.folders.isEmpty {
+                if !space.pinnedTabs.isEmpty || !space.folders.isEmpty,
+                    !space.unpinnedTabs.isEmpty
+                {
                     divider
                 }
                 newTabRow
@@ -128,17 +131,17 @@ struct SpacePageView: View {
             }
             controller.openCommandBar(mode: .newTab)
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 Image(systemName: "plus")
                     .font(.system(size: 13, weight: .regular))
                     .frame(width: 16)
                 Text("New Tab")
-                    .font(.system(size: 13.5, weight: .medium))
+                    .font(.system(size: 12.5))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .frame(height: 36)
+            .padding(.horizontal, 7)
+            .frame(height: 32)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -159,11 +162,11 @@ struct TabRow: View {
         let style = SidebarStyle(dark: scheme == .dark)
         let isActive = space.activeTabID == tab.id
         let loaded = controller.isLoaded(tab.id)
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             TabIcon(controller: controller, tab: tab, size: 16)
                 .opacity(tab.isPinned && !loaded && !isActive ? 0.6 : 1)
             Text(tab.displayTitle)
-                .font(.system(size: 13.5, weight: .medium))
+                .font(.system(size: 12.5))
                 .foregroundStyle(
                     tab.isPinned && !loaded && !isActive
                         ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
@@ -193,17 +196,19 @@ struct TabRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(tab.isPinned ? "Unload tab" : "Close tab")
+                .uiFrame("close:\(tab.id)")
             }
         }
-        .padding(.leading, 10 + indent)
+        .padding(.leading, 7 + indent)
         .padding(.trailing, 8)
-        .frame(height: 36)
+        .frame(height: 32)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(style.card(active: isActive, hovered: hovered))
                 .shadow(color: isActive ? style.shadow : .clear, radius: 2.5, y: 1)
         )
         .contentShape(Rectangle())
+        .uiFrame("tab:\(tab.id)")
         .onHover { hovered = $0 }
         .onTapGesture { controller.activateTab(tab.id) }
         .onDrag { DragPayload.tab(tab.id) }
@@ -272,8 +277,8 @@ struct FolderRow: View {
 
     var body: some View {
         let style = SidebarStyle(dark: scheme == .dark)
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 7) {
                 Image(systemName: folder.isOpen ? "folder" : "folder.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -291,7 +296,7 @@ struct FolderRow: View {
                         .onAppear { focused = true }
                 } else {
                     Text(folder.name)
-                        .font(.system(size: 13.5, weight: .medium))
+                        .font(.system(size: 12.5))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -300,8 +305,8 @@ struct FolderRow: View {
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(folder.isOpen ? 90 : 0))
             }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
+            .padding(.horizontal, 7)
+            .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(style.card(active: false, hovered: hovered || targeted))
@@ -406,6 +411,7 @@ struct BottomBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .uiFrame("space:\(space.id)")
         .help(index < 9 ? "\(space.name) (⌃\(index + 1))" : space.name)
         .onDrag { DragPayload.space(space.id) }
         .dropDestination(for: String.self) { items, _ in

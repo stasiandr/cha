@@ -21,9 +21,15 @@ failed=0
 step() { printf '\n== %s\n' "$1"; }
 
 headless=1
+real_input=
 if [ "$mode" = window ]; then
   headless=
-  if [ -z "${CHA_SCREEN:-}" ] && ! ~/.local/bin/mac-idle; then
+  if [ -n "${CHA_SCREEN:-}" ] && ! swift -e 'import AppKit; exit(NSScreen.screens.count > '"$CHA_SCREEN"' ? 0 : 1)' 2>/dev/null; then
+    echo "display $CHA_SCREEN is not connected: windowed run skipped"; exit 75
+  fi
+  if ~/.local/bin/mac-idle >/dev/null 2>&1; then
+    real_input=1  # nobody at the Mac: hover and drags may move the real cursor
+  elif [ -z "${CHA_SCREEN:-}" ]; then
     echo "Mac in use: windowed run skipped (CHA_SCREEN=<n> uses another display)"; exit 75
   fi
 fi
@@ -31,7 +37,8 @@ fi
 run_scenario() {  # name, timeout seconds
   local name="$1" limit="$2" profile="build/check/profile-$1"
   rm -rf "$profile"
-  CHA_HEADLESS=$headless CHA_TEST="$name" CHA_PROFILE="$PWD/$profile" \
+  CHA_HEADLESS=$headless CHA_REAL_INPUT=$real_input CHA_TEST="$name" \
+    CHA_PROFILE="$PWD/$profile" \
     build/cha.app/Contents/MacOS/cha >"build/check/$name.log" 2>&1 &
   local pid=$! waited=0
   while kill -0 "$pid" 2>/dev/null; do
@@ -56,6 +63,15 @@ run_scenario spaces 90; code=$?
 grep -E 'CHECK FAIL|CHECKS' build/check/spaces.log | sed 's/^.*\] //'
 if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/spaces.log; then
   echo "spaces FAILED (exit $code)"; failed=$((failed + 1))
+fi
+
+if [ "$mode" = window ]; then
+  step "ui (clicks; hover and drags only with the real cursor)"
+  run_scenario ui 60; code=$?
+  grep -E 'CHECK (FAIL|skip)|CHECKS' build/check/ui.log | sed 's/^.*cha\[[^]]*\] //'
+  if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ui.log; then
+    echo "ui FAILED (exit $code)"; failed=$((failed + 1))
+  fi
 fi
 
 if [ "$mode" = full ]; then

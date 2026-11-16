@@ -13,16 +13,16 @@ struct SidebarView: View {
         ZStack(alignment: .trailing) {
             VStack(spacing: 0) {
                 navigationRow
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 3)
                 AddressPill(controller: controller)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 8)
                 FavoritesGrid(controller: controller)
                 main
                 BottomBar(controller: controller)
                     .padding(.top, 6)
             }
             .padding(.horizontal, 10)
-            .padding(.top, controller.isFullscreen ? 8 : 2)
+            .padding(.top, controller.isFullscreen ? 6 : 0)
             .padding(.bottom, 8)
             resizeHandle
         }
@@ -74,7 +74,7 @@ struct SidebarView: View {
     private var navigationRow: some View {
         HStack(spacing: 2) {
             if !controller.isFullscreen {
-                Color.clear.frame(width: 64, height: 1)
+                Color.clear.frame(width: 54, height: 1)
             }
             ChromeButton(symbol: "sidebar.left", help: "Hide sidebar (⌘S)") {
                 controller.toggleSidebar()
@@ -90,7 +90,7 @@ struct SidebarView: View {
             }
             ChromeButton(symbol: "arrow.clockwise", help: "Reload") { controller.reload() }
         }
-        .frame(height: 28)
+        .frame(height: 30)
         .opacity(hoveringChrome ? 1 : 0.6)
         .animation(.easeOut(duration: 0.15), value: hoveringChrome)
     }
@@ -215,7 +215,7 @@ struct AddressPill: View {
                     .help("Not secure")
             }
             Text(label(url))
-                .font(.system(size: 13))
+                .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(url.isEmpty || url == "about:blank" ? .tertiary : .secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -232,8 +232,8 @@ struct AddressPill: View {
                 .help("Copy link (⇧⌘C)")
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 34)
+        .padding(.horizontal, 11)
+        .frame(height: 32)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(style.pill))
         .contentShape(Rectangle())
         .onTapGesture { controller.openCommandBar(mode: .current) }

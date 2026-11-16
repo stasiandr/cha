@@ -39,7 +39,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var pageAnimating = false
     var pageGeneration = 0
 
-    @Published var sidebarWidth: CGFloat = 250
+    @Published var sidebarWidth: CGFloat = 210
     static let minSidebarWidth: CGFloat = 180
     static let maxSidebarWidth: CGFloat = 420
     static let contentInset: CGFloat = 8
@@ -75,7 +75,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let saved = state.activeSpaceID
         activeSpaceID =
             state.spaces.contains { $0.id == saved } ? saved! : state.spaces[0].id
-        sidebarWidth = CGFloat(state.sidebarWidth ?? 250)
+        sidebarWidth = CGFloat(state.sidebarWidth ?? 210)
         super.init()
         archiveStaleTabs()
         loadSavedFavicons()
@@ -137,19 +137,28 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             sidebarWidthConstraint,
         ])
 
-        if Diagnostics.headless {
+        if Diagnostics.headless || Diagnostics.screenMissing {
+            if Diagnostics.screenMissing {
+                NSLog("SCREEN %d is not connected: running off screen", Diagnostics.screenIndex ?? -1)
+            }
             window.setFrameOrigin(Diagnostics.offscreenOrigin)
             window.orderFront(nil)
         } else if let index = Diagnostics.screenIndex {
             let screens = NSScreen.screens
-            let screen = screens[min(max(index, 0), screens.count - 1)].visibleFrame
+            let screen = screens[index].visibleFrame
             let size = NSSize(
                 width: min(1280, screen.width - 40), height: min(820, screen.height - 40))
             window.setFrame(
                 NSRect(
                     x: screen.midX - size.width / 2, y: screen.midY - size.height / 2,
                     width: size.width, height: size.height), display: false)
+            // Not active, it would sit under whatever is on that display;
+            // a check needs it in view (and its pages painting).
+            window.level = .floating
             window.orderFront(nil)
+            NSLog(
+                "SCREEN %d of %d: window at %@ on %@", index, screens.count,
+                NSStringFromRect(window.frame), window.screen?.localizedName ?? "-")
         } else {
             if window.frame.origin == .zero { window.center() }
             window.makeKeyAndOrderFront(nil)
