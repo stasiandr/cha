@@ -61,6 +61,12 @@ the verification-code fill, and the bench:
 Before this work ⌘Q never quit: CEF's message loop ignores the quit while
 browsers are open, so the process kept running until killed.
 
+The same 47 checks also pass in a real window on a second monitor
+(`CHA_SCREEN=1 scripts/check.sh window`); `build/shots/*-window.png` are
+screen captures of it, pages included. The sidebar's first row shares the
+title bar with the traffic lights, as in Arc (reference: the user's Arc
+screenshots, 2026-11-16).
+
 Not covered by the automated checks (no headless path), still to be tried by
 hand: dragging tabs and space icons, the colour panel, the hover states. The swipe is checked through synthesized
 scroll events fed to the handler; the direction for natural scrolling

@@ -7,6 +7,9 @@
 #   scripts/check.sh fast     # build + spaces
 #   scripts/check.sh window   # build + spaces in a real, visible window;
 #                             # exits 75 without running when the Mac is in use
+#   CHA_SCREEN=1 scripts/check.sh window
+#                             # the same on display 1 (a second monitor), even
+#                             # while the Mac is in use: no focus taken, muted
 #
 # Pictures land in build/shots, logs in build/check. Exit code = failed steps.
 set -uo pipefail
@@ -19,8 +22,10 @@ step() { printf '\n== %s\n' "$1"; }
 
 headless=1
 if [ "$mode" = window ]; then
-  if ! ~/.local/bin/mac-idle; then echo "Mac in use: windowed run skipped"; exit 75; fi
   headless=
+  if [ -z "${CHA_SCREEN:-}" ] && ! ~/.local/bin/mac-idle; then
+    echo "Mac in use: windowed run skipped (CHA_SCREEN=<n> uses another display)"; exit 75
+  fi
 fi
 
 run_scenario() {  # name, timeout seconds

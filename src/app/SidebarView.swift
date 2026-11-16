@@ -11,18 +11,24 @@ struct SidebarView: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            VStack(spacing: 10) {
+            VStack(spacing: 0) {
                 navigationRow
+                    .padding(.bottom, 10)
                 AddressPill(controller: controller)
+                    .padding(.bottom, 10)
                 FavoritesGrid(controller: controller)
                 main
                 BottomBar(controller: controller)
+                    .padding(.top, 6)
             }
             .padding(.horizontal, 10)
-            .padding(.top, controller.isFullscreen ? 12 : 38)  // Clear the traffic lights.
-            .padding(.bottom, 10)
+            .padding(.top, controller.isFullscreen ? 8 : 2)
+            .padding(.bottom, 8)
             resizeHandle
         }
+        // The sidebar runs up under the title bar: its first row shares the
+        // line with the traffic lights, as in Arc.
+        .ignoresSafeArea()
         .onHover { hoveringChrome = $0 }
     }
 
@@ -63,8 +69,13 @@ struct SidebarView: View {
     }
 
     // Arc keeps the chrome quiet: the arrows fade in when the pointer is here.
+    // One line with the traffic lights: they sit on the left, the sidebar
+    // toggle right after them, the arrows and reload on the right.
     private var navigationRow: some View {
         HStack(spacing: 2) {
+            if !controller.isFullscreen {
+                Color.clear.frame(width: 64, height: 1)
+            }
             ChromeButton(symbol: "sidebar.left", help: "Hide sidebar (⌘S)") {
                 controller.toggleSidebar()
             }
@@ -79,7 +90,8 @@ struct SidebarView: View {
             }
             ChromeButton(symbol: "arrow.clockwise", help: "Reload") { controller.reload() }
         }
-        .opacity(hoveringChrome ? 1 : 0.5)
+        .frame(height: 28)
+        .opacity(hoveringChrome ? 1 : 0.6)
         .animation(.easeOut(duration: 0.15), value: hoveringChrome)
     }
 }
@@ -97,7 +109,7 @@ struct SidebarStyle {
     }
     var tile: Color { dark ? .white.opacity(0.09) : .white.opacity(0.34) }
     var activeTile: Color { dark ? .white.opacity(0.22) : .white.opacity(0.9) }
-    var pill: Color { dark ? .white.opacity(0.10) : .white.opacity(0.40) }
+    var pill: Color { dark ? .white.opacity(0.11) : .white.opacity(0.45) }
     var shadow: Color { .black.opacity(dark ? 0.25 : 0.10) }
 }
 
@@ -111,8 +123,8 @@ struct ChromeButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 26, height: 24)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 28, height: 26)
                 .foregroundStyle(enabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -194,15 +206,16 @@ struct AddressPill: View {
     var body: some View {
         let style = SidebarStyle(dark: scheme == .dark)
         let url = controller.addressText
-        let secure = url.hasPrefix("https://")
+        let insecure = url.hasPrefix("http://")
         HStack(spacing: 6) {
-            if !url.isEmpty, url != "about:blank" {
-                Image(systemName: secure ? "lock.fill" : "globe")
-                    .font(.system(size: 9.5, weight: .semibold))
+            if insecure {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
+                    .help("Not secure")
             }
             Text(label(url))
-                .font(.system(size: 12.5))
+                .font(.system(size: 13))
                 .foregroundStyle(url.isEmpty || url == "about:blank" ? .tertiary : .secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -219,9 +232,9 @@ struct AddressPill: View {
                 .help("Copy link (⇧⌘C)")
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(style.pill))
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(style.pill))
         .contentShape(Rectangle())
         .onTapGesture { controller.openCommandBar(mode: .current) }
         .onHover { hovered = $0 }
@@ -230,6 +243,7 @@ struct AddressPill: View {
     private func label(_ url: String) -> String {
         if url.isEmpty || url == "about:blank" { return "Search or enter address" }
         if url.hasPrefix("data:") { return "data:" }
+        if url.hasPrefix("chrome://") || url.hasPrefix("about:") { return url }
         return displayHost(url) ?? url
     }
 }
@@ -251,6 +265,7 @@ struct FavoritesGrid: View {
             LazyVGrid(columns: columns, spacing: 7) {
                 ForEach(favorites) { tab in tile(tab) }
             }
+            .padding(.bottom, 10)
             .dropDestination(for: String.self) { items, _ in
                 guard let id = DragPayload.tabID(items) else { return false }
                 controller.addToFavorites(id)
@@ -266,7 +281,7 @@ struct FavoritesGrid: View {
         return TabIcon(controller: controller, tab: tab, size: 18)
             .opacity(loaded || isActive ? 1 : 0.75)
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(height: 40)
             .background(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .fill(isActive ? style.activeTile : style.tile)

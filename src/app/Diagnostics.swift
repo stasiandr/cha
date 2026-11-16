@@ -8,6 +8,16 @@ enum Diagnostics {
     // is using this Mac. Everything else behaves as usual.
     static let headless = !(ProcessInfo.processInfo.environment["CHA_HEADLESS"] ?? "").isEmpty
 
+    // CHA_SCREEN=<n>: a real, visible window on display n (NSScreen.screens
+    // order), for windowed checks on a second monitor while someone works on
+    // the first: the app never activates, so focus stays where it was, and
+    // audio is muted.
+    static let screenIndex: Int? = ProcessInfo.processInfo.environment["CHA_SCREEN"]
+        .flatMap(Int.init)
+
+    // Don't take focus from whoever is at the Mac.
+    static var quiet: Bool { headless || screenIndex != nil }
+
     static let offscreenOrigin = NSPoint(x: -30000, y: -30000)
 
     // Wall-clock time the kernel started this process, so marks include the

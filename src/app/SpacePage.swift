@@ -39,95 +39,39 @@ struct SpacePageView: View {
     @ObservedObject var controller: BrowserController
     let space: SpaceData
     @Environment(\.colorScheme) private var scheme
-    @State private var hoveringHeader = false
     @State private var hoveringDivider = false
-    @State private var renaming = false
-    @State private var nameDraft = ""
-    @FocusState private var nameFocused: Bool
 
     var body: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
-                header
+                // Arc shows no title over the tabs: pinned ones first, then
+                // the divider, then New Tab and today's.
                 pinnedSection
-                divider
+                if !space.pinnedTabs.isEmpty || !space.folders.isEmpty {
+                    divider
+                }
                 newTabRow
                 ForEach(space.unpinnedTabs) { tab in
                     TabRow(controller: controller, space: space, tab: tab)
                 }
-                // Room to drop below the last tab.
-                Color.clear.frame(height: 40)
+                // Room to drop below the last tab; right-click for the
+                // space's own menu.
+                Color.clear.frame(height: 60)
+                    .contentShape(Rectangle())
                     .dropDestination(for: String.self) { items, _ in
                         guard let id = DragPayload.tabID(items) else { return false }
                         controller.moveTab(id, toSection: false)
                         return true
                     }
+                    .contextMenu { spaceMenu }
             }
         }
         .scrollIndicators(.never)
     }
 
-    // The space's name with its icon; double-click renames, the menu edits.
-    private var header: some View {
-        HStack(spacing: 7) {
-            SpaceIcon(space: space, size: 11)
-                .foregroundStyle(Color(space.theme.color))
-                .frame(width: 16)
-            if renaming {
-                TextField("Space name", text: $nameDraft)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .focused($nameFocused)
-                    .onSubmit {
-                        controller.renameSpace(space.id, to: nameDraft)
-                        renaming = false
-                    }
-                    .onExitCommand { renaming = false }
-                    .onAppear { nameFocused = true }
-            } else {
-                Text(space.name)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .onTapGesture(count: 2) {
-                        nameDraft = space.name
-                        renaming = true
-                    }
-            }
-            Spacer(minLength: 0)
-            Menu {
-                spaceMenu
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 18)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .opacity(hoveringHeader ? 1 : 0)
-        }
-        .padding(.horizontal, 8)
-        .frame(height: 28)
-        .contentShape(Rectangle())
-        .onHover { hoveringHeader = $0 }
-        .contextMenu { spaceMenu }
-        // Dropping on the name pins the tab in this space.
-        .dropDestination(for: String.self) { items, _ in
-            guard let id = DragPayload.tabID(items) else { return false }
-            controller.moveTab(id, toSection: true)
-            return true
-        }
-    }
-
     @ViewBuilder
     private var spaceMenu: some View {
-        Button("Rename Space") {
-            nameDraft = space.name
-            renaming = true
-        }
-        Button("Edit Icon and Colour…") { controller.editSpace(space.id) }
+        Button("Edit Space…") { controller.editSpace(space.id) }
         Button("New Folder") { _ = controller.addFolder() }
         Divider()
         Button("Delete Space…") { controller.deleteSpace(space.id) }
@@ -166,8 +110,8 @@ struct SpacePageView: View {
                 .help("Archive today's tabs")
             }
         }
-        .padding(.horizontal, 8)
-        .frame(height: 22)
+        .padding(.horizontal, 10)
+        .frame(height: 20)
         .contentShape(Rectangle())
         .onHover { hoveringDivider = $0 }
         .dropDestination(for: String.self) { items, _ in
@@ -186,15 +130,15 @@ struct SpacePageView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .regular))
                     .frame(width: 16)
                 Text("New Tab")
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 13.5, weight: .medium))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .frame(height: 32)
+            .padding(.horizontal, 10)
+            .frame(height: 36)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -219,7 +163,7 @@ struct TabRow: View {
             TabIcon(controller: controller, tab: tab, size: 16)
                 .opacity(tab.isPinned && !loaded && !isActive ? 0.6 : 1)
             Text(tab.displayTitle)
-                .font(.system(size: 12.5, weight: isActive ? .medium : .regular))
+                .font(.system(size: 13.5, weight: .medium))
                 .foregroundStyle(
                     tab.isPinned && !loaded && !isActive
                         ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
@@ -251,11 +195,11 @@ struct TabRow: View {
                 .help(tab.isPinned ? "Unload tab" : "Close tab")
             }
         }
-        .padding(.leading, 8 + indent)
+        .padding(.leading, 10 + indent)
         .padding(.trailing, 8)
-        .frame(height: 32)
+        .frame(height: 36)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(style.card(active: isActive, hovered: hovered))
                 .shadow(color: isActive ? style.shadow : .clear, radius: 2.5, y: 1)
         )
@@ -347,7 +291,7 @@ struct FolderRow: View {
                         .onAppear { focused = true }
                 } else {
                     Text(folder.name)
-                        .font(.system(size: 12.5))
+                        .font(.system(size: 13.5, weight: .medium))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -356,10 +300,10 @@ struct FolderRow: View {
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(folder.isOpen ? 90 : 0))
             }
-            .padding(.horizontal, 8)
-            .frame(height: 32)
+            .padding(.horizontal, 10)
+            .frame(height: 36)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(style.card(active: false, hovered: hovered || targeted))
             )
             .contentShape(Rectangle())

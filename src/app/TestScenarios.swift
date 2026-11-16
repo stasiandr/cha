@@ -195,10 +195,9 @@ enum TestScenarios {
     // windowed runs (scripts/check.sh window), which happen when nobody is
     // at this Mac.
     static func screenShot(_ name: String) {
-        guard let window = NSApp.windows.first(where: { $0 is BrowserWindow }),
-            let screen = window.screen ?? NSScreen.screens.first
-        else { return }
-        let top = (NSScreen.screens.first?.frame.height ?? screen.frame.height)
+        guard let window = NSApp.windows.first(where: { $0 is BrowserWindow }) else { return }
+        // screencapture counts from the top left of the main display.
+        let top = NSScreen.screens.first?.frame.maxY ?? 0
         let f = window.frame
         let rect = "\(Int(f.minX)),\(Int(top - f.maxY)),\(Int(f.width)),\(Int(f.height))"
         let process = Process()
@@ -292,19 +291,26 @@ extension TestScenarios {
         let entry = CodeStore.shared.add(
             CodeEntry(
                 label: "Test code", site: "", secret: "GEZDGNBVGY3TQOJQ"))
+        // The code changes every 30 s; what counts is the one typed in.
+        var typed = ["", ""]
         at(2) { controller.newTab(url: otpPage) }
-        at(5) { controller.fill(entry) }
+        at(5) {
+            typed[0] = entry.code ?? "-"
+            controller.fill(entry)
+        }
         at(6) {
             controller.activeTab?.executeJavaScript(
                 "document.title = 'SINGLE [' + document.getElementById('otp').value + ']'")
         }
         at(8) {
             NSLog(
-                "CODES fill %@ expected=%@", controller.activeTab?.title ?? "-",
-                entry.code ?? "-")
+                "CODES fill %@ expected=%@", controller.activeTab?.title ?? "-", typed[0])
             controller.navigate(to: boxesPage)
         }
-        at(11) { controller.fill(entry) }
+        at(11) {
+            typed[1] = entry.code ?? "-"
+            controller.fill(entry)
+        }
         at(12) {
             controller.activeTab?.executeJavaScript(
                 """
@@ -314,8 +320,7 @@ extension TestScenarios {
         }
         at(14) {
             NSLog(
-                "CODES boxes %@ expected=%@", controller.activeTab?.title ?? "-",
-                entry.code ?? "-")
+                "CODES boxes %@ expected=%@", controller.activeTab?.title ?? "-", typed[1])
             CodeStore.shared.remove(entry.id)
             NSApp.terminate(nil)
         }

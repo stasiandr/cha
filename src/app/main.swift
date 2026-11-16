@@ -5,6 +5,21 @@ Diagnostics.mark("main")
 // CEF needs its own NSApplication subclass in place before any UI exists.
 ChaEngine.installApplication()
 if Diagnostics.headless { NSApp.setActivationPolicy(.accessory) }
+// A windowed check on another screen keeps the Dock icon, as a real run
+// would, but never comes to the front by itself. macOS still activates a
+// freshly launched app once; focus goes straight back to whoever had it.
+if Diagnostics.screenIndex != nil {
+    NSApp.setActivationPolicy(.regular)
+    let previous = NSWorkspace.shared.frontmostApplication
+    NotificationCenter.default.addObserver(
+        forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { _ in
+        guard let previous, previous != NSRunningApplication.current else { return }
+        NSApp.yieldActivation(to: previous)
+        previous.activate()
+        NSLog("QUIET gave focus back to %@", previous.localizedName ?? "-")
+    }
+}
 
 let launcher = Launcher()
 ChaEngine.shared.delegate = launcher
@@ -29,7 +44,7 @@ final class Launcher: NSObject, ChaEngineDelegate {
         let controller = BrowserController()
         self.controller = controller
         NSApp.mainMenu = MainMenu.build(controller: controller)
-        if !Diagnostics.headless {
+        if !Diagnostics.quiet {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
         }

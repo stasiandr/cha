@@ -40,6 +40,29 @@ static double ChaMillisSinceStart() {
   CefScopedSendingEvent sendingEventScoper;
   [super sendEvent:event];
 }
+// Checks run while someone works at this Mac (headless, or on another
+// display with CHA_SCREEN): Chromium activates the app whenever it shows a
+// tab's window, which would pull focus away from what they are doing.
+static BOOL ChaQuiet() {
+  static BOOL quiet;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    const char* headless = getenv("CHA_HEADLESS");
+    const char* screen = getenv("CHA_SCREEN");
+    quiet = (headless && *headless) || (screen && *screen);
+  });
+  return quiet;
+}
+- (void)activateIgnoringOtherApps:(BOOL)flag {
+  if (!ChaQuiet()) {
+    [super activateIgnoringOtherApps:flag];
+  }
+}
+- (void)activate {
+  if (!ChaQuiet()) {
+    [super activate];
+  }
+}
 - (void)terminate:(id)sender {
   fprintf(stderr, "TIMING quit-requested %.0f\n", ChaMillisSinceStart());
   // The browsers have to close before the loop may end; the delegate does
@@ -79,7 +102,8 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
     // Test runs happen while someone works at this Mac: no sound, and pages
     // keep painting although their windows sit off screen.
     const char* headless = getenv("CHA_HEADLESS");
-    if (headless && *headless) {
+    const char* screen = getenv("CHA_SCREEN");
+    if ((headless && *headless) || (screen && *screen)) {
       command_line->AppendSwitch("mute-audio");
       command_line->AppendSwitch("disable-backgrounding-occluded-windows");
       command_line->AppendSwitch("disable-renderer-backgrounding");

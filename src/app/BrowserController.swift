@@ -97,7 +97,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.minSize = NSSize(width: 700, height: 420)
-        window.setFrameAutosaveName("cha.main")
+        // Arc's window moves by any empty part of the sidebar.
+        window.isMovableByWindowBackground = true
+        if !Diagnostics.quiet { window.setFrameAutosaveName("cha.main") }
 
         let background = NSVisualEffectView()
         background.material = .sidebar
@@ -137,6 +139,16 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
         if Diagnostics.headless {
             window.setFrameOrigin(Diagnostics.offscreenOrigin)
+            window.orderFront(nil)
+        } else if let index = Diagnostics.screenIndex {
+            let screens = NSScreen.screens
+            let screen = screens[min(max(index, 0), screens.count - 1)].visibleFrame
+            let size = NSSize(
+                width: min(1280, screen.width - 40), height: min(820, screen.height - 40))
+            window.setFrame(
+                NSRect(
+                    x: screen.midX - size.width / 2, y: screen.midY - size.height / 2,
+                    width: size.width, height: size.height), display: false)
             window.orderFront(nil)
         } else {
             if window.frame.origin == .zero { window.center() }
@@ -335,7 +347,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         canGoBack = tab.canGoBack
         canGoForward = tab.canGoForward
         window?.title = data.displayTitle
-        if tab.nativeWindow != nil, !Diagnostics.headless { tab.focus() }
+        if tab.nativeWindow != nil, !Diagnostics.quiet { tab.focus() }
     }
 
     func showOnly(tabID: UUID) {
@@ -346,7 +358,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
                     window.addChildWindow(native, ordered: .above)
                 }
                 native.setFrame(contentScreenRect, display: true)
-                if Diagnostics.headless {
+                if Diagnostics.quiet {
                     native.orderFront(nil)
                 } else {
                     native.makeKeyAndOrderFront(nil)
@@ -683,7 +695,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
         if activeSpace.activeTabID == id {
             showOnly(tabID: id)
-            tab.focus()
+            if !Diagnostics.quiet { tab.focus() }
         } else if let native = tab.nativeWindow {
             native.orderOut(nil)
         }

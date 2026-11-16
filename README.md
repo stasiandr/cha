@@ -34,11 +34,13 @@ saved passwords with a throwaway key. Once the app is signed, set
 scripts/check.sh           # build, space checks, code fill, launch/quit bench
 scripts/check.sh fast      # build and space checks
 scripts/check.sh window    # the space checks in a real window (Mac idle only)
+CHA_SCREEN=1 scripts/check.sh window   # …on display 1, while the Mac is in use
 scripts/bench.py 5         # launch and quit timing alone
 ```
 
 They run headless: `CHA_HEADLESS=1` keeps the windows off screen, never takes
-focus and mutes audio, and `CHA_PROFILE=<dir>` points state, codes and the
+focus and mutes audio. `CHA_SCREEN=<n>` instead shows a real window on display
+n (a second monitor), muted, without ever taking focus from the one in use; and `CHA_PROFILE=<dir>` points state, codes and the
 Chromium profile at a throwaway directory. `CHA_TEST=<scenario>` replays a
 scenario (`spaces`, `codes`, `bench`, `demo`, …); pictures go to
 `build/shots`, logs to `build/check`. What "like Arc" means, and where it
