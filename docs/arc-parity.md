@@ -61,8 +61,8 @@ the verification-code fill, and the bench:
 Before this work ⌘Q never quit: CEF's message loop ignores the quit while
 browsers are open, so the process kept running until killed.
 
-Checked only by hand (no headless path): dragging tabs and space icons, the
-colour panel, the hover states. The swipe is checked through synthesized
+Not covered by the automated checks (no headless path), still to be tried by
+hand: dragging tabs and space icons, the colour panel, the hover states. The swipe is checked through synthesized
 scroll events fed to the handler; the direction for natural scrolling
 follows `isDirectionInvertedFromDevice`.
 
