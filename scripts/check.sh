@@ -21,13 +21,13 @@ failed=0
 step() { printf '\n== %s\n' "$1"; }
 
 headless=1
-real_input=
+real_input="${CHA_REAL_INPUT:-}"  # set it to 1 when nobody is at the Mac
 if [ "$mode" = window ]; then
   headless=
   if [ -n "${CHA_SCREEN:-}" ] && ! swift -e 'import AppKit; exit(NSScreen.screens.count > '"$CHA_SCREEN"' ? 0 : 1)' 2>/dev/null; then
     echo "display $CHA_SCREEN is not connected: windowed run skipped"; exit 75
   fi
-  if ~/.local/bin/mac-idle >/dev/null 2>&1; then
+  if [ "$real_input" = 1 ] || ~/.local/bin/mac-idle >/dev/null 2>&1; then
     real_input=1  # nobody at the Mac: hover and drags may move the real cursor
   elif [ -z "${CHA_SCREEN:-}" ]; then
     echo "Mac in use: windowed run skipped (CHA_SCREEN=<n> uses another display)"; exit 75
