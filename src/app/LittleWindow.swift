@@ -95,6 +95,34 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         tab.setCornerRadius(10)
         self.tab = tab
         attachPage()
+        pinPage()
+    }
+
+    // A page may resize or move its own window (window.resizeTo, sign-in
+    // pages do), and Chromium lets it: the window snaps back to its place.
+    private var pinObservers: [NSObjectProtocol] = []
+    private func pinPage() {
+        guard pinObservers.isEmpty, let native = tab?.nativeWindow else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.pinPage() }
+            return
+        }
+        for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+            pinObservers.append(
+                NotificationCenter.default.addObserver(forName: name, object: native, queue: .main) {
+                    [weak self] _ in self?.layoutPage()
+                })
+        }
+        layoutPage()
+    }
+
+    private var laying = false
+    func layoutPage() {
+        guard !laying, let native = tab?.nativeWindow else { return }
+        let target = pageScreenRect
+        guard !native.frame.isClose(to: target) else { return }
+        laying = true
+        native.setFrame(target, display: true)
+        laying = false
     }
 
     var pageScreenRect: NSRect {
@@ -130,19 +158,19 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
     // MARK: NSWindowDelegate
 
     func windowDidResize(_ notification: Notification) {
-        tab?.nativeWindow?.setFrame(pageScreenRect, display: true)
+        layoutPage()
         window.placeTrafficLights()
     }
 
-    func windowDidMove(_ notification: Notification) {
-        tab?.nativeWindow?.setFrame(pageScreenRect, display: true)
-    }
+    func windowDidMove(_ notification: Notification) { layoutPage() }
 
     func windowWillClose(_ notification: Notification) {
         if !movedToMain {
             if let native = tab?.nativeWindow, native.parent != nil { window.removeChildWindow(native) }
             tab?.close()
         }
+        for observer in pinObservers { NotificationCenter.default.removeObserver(observer) }
+        pinObservers = []
         Self.open.removeAll { $0 === self }
     }
 
@@ -151,6 +179,7 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
     func tabDidBecomeReady(_ tab: ChaTab) { attachPage() }
 
     func tabDidUpdate(_ tab: ChaTab) {
+        layoutPage()
         if !tab.currentURL.isEmpty { url = tab.currentURL }
         title = tab.title
         if let icon = tab.favicon { favicon = icon }

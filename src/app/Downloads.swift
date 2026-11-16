@@ -95,9 +95,18 @@ final class DownloadStore: ObservableObject {
 }
 
 extension BrowserController {
+    // Slides in from the left in the time a space switch takes. The spaces'
+    // transition is chosen first, then the page changes on the next turn, so
+    // the outgoing view already carries the slide.
     func toggleDownloads() {
-        withAnimation(.easeOut(duration: 0.2)) {
-            sidebarPage = sidebarPage == .downloads ? .tabs : .downloads
+        slidingToDownloads = true
+        DispatchQueue.main.async { [self] in
+            withAnimation(.easeOut(duration: Self.switchDuration)) {
+                sidebarPage = sidebarPage == .downloads ? .tabs : .downloads
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.switchDuration + 0.05) {
+                self.slidingToDownloads = false
+            }
         }
     }
 }

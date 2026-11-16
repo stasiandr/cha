@@ -172,3 +172,11 @@ struct UIFrameRecorder: ViewModifier {
 extension View {
     func uiFrame(_ key: String) -> some View { modifier(UIFrameRecorder(key: key)) }
 }
+
+extension NSRect {
+    // Equal to within a point: frames come back rounded from Chromium.
+    func isClose(to other: NSRect, tolerance: CGFloat = 1) -> Bool {
+        abs(minX - other.minX) < tolerance && abs(minY - other.minY) < tolerance
+            && abs(width - other.width) < tolerance && abs(height - other.height) < tolerance
+    }
+}

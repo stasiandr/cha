@@ -35,16 +35,25 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var main: some View {
-        switch controller.sidebarPage {
-        case .tabs:
-            SpacePager(controller: controller)
-        case .editSpace(let id, let isNew):
-            SpaceEditorView(controller: controller, spaceID: id, isNew: isNew)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        case .downloads:
-            DownloadsView(controller: controller)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+        ZStack {
+            switch controller.sidebarPage {
+            case .tabs:
+                SpacePager(controller: controller)
+                    // To and from downloads the spaces move aside to the right,
+                    // as when going to the space on the left.
+                    .transition(
+                        controller.slidingToDownloads ? .move(edge: .trailing) : .opacity)
+            case .editSpace(let id, let isNew):
+                SpaceEditorView(controller: controller, spaceID: id, isNew: isNew)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            case .downloads:
+                // Downloads come in from the left, like a space before the
+                // first one.
+                DownloadsView(controller: controller)
+                    .transition(.move(edge: .leading))
+            }
         }
+        .clipped()
     }
 
     // Dragging the right edge changes the sidebar width, as in Arc.

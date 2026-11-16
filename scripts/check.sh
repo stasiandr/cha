@@ -37,7 +37,7 @@ fi
 run_scenario() {  # name, timeout seconds
   local name="$1" limit="$2" profile="build/check/profile-$1"
   rm -rf "$profile"
-  CHA_HEADLESS=$headless CHA_REAL_INPUT=$real_input CHA_TEST="$name" \
+  CHA_DOWNLOADS="$PWD/$profile/Downloads" CHA_HEADLESS=$headless CHA_REAL_INPUT=$real_input CHA_TEST="$name" \
     CHA_PROFILE="$PWD/$profile" \
     build/cha.app/Contents/MacOS/cha >"build/check/$name.log" 2>&1 &
   local pid=$! waited=0
@@ -70,6 +70,13 @@ run_scenario openurl 30; code=$?
 grep -E 'CHECK |CHECKS' build/check/openurl.log | sed 's/^.*cha\[[^]]*\] //'
 if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/openurl.log; then
   echo "links FAILED"; failed=$((failed + 1))
+fi
+
+step "a download"
+run_scenario download 30; code=$?
+grep -E 'CHECK ' build/check/download.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/download.log; then
+  echo "download FAILED"; failed=$((failed + 1))
 fi
 
 step "links that want a new tab, and ⌘ shortcuts over a page"

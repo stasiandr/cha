@@ -31,6 +31,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         case downloads
     }
     @Published var sidebarPage: SidebarPage = .tabs
+    @Published var slidingToDownloads = false
 
     // Space paging: how far the space's page is dragged sideways (points,
     // positive = towards the previous space) and which space sits next to it.
@@ -50,19 +51,19 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var sidebarView: NSView?
     private var tintView: NSView?  // The space's colour behind everything.
     private var contentWell: NSView?  // Drops a shadow under the page card.
-    lazy var sidebarWidthConstraint: NSLayoutConstraint = {
-        let constraint = NSLayoutConstraint(
-            item: sidebarView as Any, attribute: .width, relatedBy: .equal,
-            toItem: nil, attribute: .notAnAttribute, multiplier: 1,
-            constant: sidebarWidth)
-        return constraint
-    }()
+    // Made in showWindow, once the sidebar view exists. (It used to be a
+    // lazy var: the window's saved frame was restored before the sidebar
+    // existed, the resize asked for the constraint, and it was made with no
+    // view — the sidebar's width was then held by nothing and the page and
+    // the sidebar drifted apart.)
+    var sidebarWidthConstraint: NSLayoutConstraint?
     var commandPanel: CommandPanel?
     var findPanel: CommandPanel?
     let find = FindModel()
     var commandMode: CommandMode = .newTab
     var commandKeyMonitor: Any?
     var revealMonitor: Any?
+    var pinning = false
     var topReveal = false
     var swipeMonitor: Any?
     var swipe = SwipeTracker()
@@ -99,11 +100,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         window.titleVisibility = .hidden
         window.title = "cha"
         window.isReleasedWhenClosed = false
-        window.delegate = self
         window.minSize = NSSize(width: 700, height: 420)
         // Arc's window moves by any empty part of the sidebar.
         window.isMovableByWindowBackground = true
-        if !Diagnostics.quiet { window.setFrameAutosaveName("cha.main") }
 
         let background = NSVisualEffectView()
         background.material = .sidebar
@@ -131,6 +130,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         contentWell = well
 
         let sidebar = NSHostingView(rootView: SidebarView(controller: self))
+        let widthConstraint = sidebar.widthAnchor.constraint(equalToConstant: sidebarWidth)
+        sidebarWidthConstraint = widthConstraint
         // The width is ours (sidebarWidth, which follows the window); left to
         // itself the hosting view pins its width to the SwiftUI content's
         // size, wins against the width constraint, and the page and the
@@ -143,7 +144,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor),
             sidebar.topAnchor.constraint(equalTo: background.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor),
-            sidebarWidthConstraint,
+            widthConstraint,
         ])
 
         if Diagnostics.headless || Diagnostics.screenMissing {
@@ -173,6 +174,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             window.makeKeyAndOrderFront(nil)
         }
         self.window = window
+        // Only now, with the sidebar in place, may resizes reach us; the
+        // saved frame is restored here for the same reason.
+        window.delegate = self
+        if !Diagnostics.quiet { window.setFrameAutosaveName("cha.main") }
         followWindowWidth()
         window.placeTrafficLights()
         Diagnostics.mark("window")
@@ -522,6 +527,34 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         tab.setCornerRadius(pageCornerRadius)
         liveTabs[id] = tab
         tabIDsByObject[ObjectIdentifier(tab)] = id
+        pin(tab)
+    }
+
+    // A page may resize or move its own window (window.resizeTo); the shown
+    // one snaps back to the content area, the hidden ones don't matter.
+    func pin(_ tab: ChaTab) {
+        guard let native = tab.nativeWindow else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak tab] in
+                if let self, let tab, self.liveTabs.values.contains(where: { $0 === tab }) { self.pin(tab) }
+            }
+            return
+        }
+        for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: native, queue: .main) {
+                [weak self, weak native] _ in
+                guard let self, let native, !self.pinning, native === self.activeTab?.nativeWindow,
+                    native.parent != nil, !self.pageAnimating, self.window?.inLiveResize == false,
+                    native.alphaValue > 0.99
+                else { return }
+                let target = self.contentScreenRect
+                // Chromium rounds frames: only a real move counts, and the
+                // fix-up itself doesn't come back here.
+                guard !native.frame.isClose(to: target) else { return }
+                self.pinning = true
+                native.setFrame(target, display: true)
+                self.pinning = false
+            }
+        }
     }
 
     // A little window's page closed while quitting counts towards the wait.
@@ -875,7 +908,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     private func applySidebarWidth(_ width: CGFloat) {
         sidebarWidth = min(max(width.rounded(), Self.minSidebarWidth), Self.maxSidebarWidth)
-        sidebarWidthConstraint.constant = sidebarWidth
+        sidebarWidthConstraint?.constant = sidebarWidth
         layoutActiveTab()
     }
 

@@ -1,6 +1,7 @@
 #import "ChaEngine.h"
 
 #include "include/cef_app.h"
+#include "include/cef_request_context.h"
 #include "include/cef_application_mac.h"
 #include "include/wrapper/cef_library_loader.h"
 
@@ -137,7 +138,25 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
     }
   }
 
-  void OnContextInitialized() override { [engine_.delegate engineDidInitialize]; }
+  void OnContextInitialized() override {
+    // Downloads are cha's (the sidebar's list): Chromium's own bubble, which
+    // popped up on its own when a download finished, stays shut, and nothing
+    // asks where to save.
+    CefRefPtr<CefRequestContext> context = CefRequestContext::GetGlobalContext();
+    const std::pair<const char*, bool> prefs[] = {
+        {"download_bubble.partial_view_enabled", false},
+        {"download.prompt_for_download", false},
+    };
+    for (const auto& [name, value] : prefs) {
+      CefRefPtr<CefValue> v = CefValue::Create();
+      v->SetBool(value);
+      CefString error;
+      if (!context->SetPreference(name, v, error)) {
+        fprintf(stderr, "PREF %s not set: %s\n", name, error.ToString().c_str());
+      }
+    }
+    [engine_.delegate engineDidInitialize];
+  }
 
  private:
   __weak ChaEngine* engine_;

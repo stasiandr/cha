@@ -91,6 +91,9 @@ enum SpaceChecks {
     static func checkSidebarFits(_ label: String, _ c: BrowserController) {
         guard let view = c.sidebarView else { return check("sidebar view found", false) }
         check(
+            "the sidebar's width constraint holds the sidebar view (\(label))",
+            c.sidebarWidthConstraint?.firstItem === view && c.sidebarWidthConstraint?.isActive == true)
+        check(
             "sidebar view as wide as the sidebar (\(label))",
             abs(view.frame.width - c.sidebarWidth) < 1,
             "view \(view.frame.width) vs \(c.sidebarWidth)")
@@ -380,11 +383,17 @@ enum SpaceChecks {
                 check("clear keeps pinned", c.tabData(pinned) != nil)
                 // ⇧⌘L: the downloads page slides up in place of the tabs.
                 c.toggleDownloads()
-                check("⇧⌘L opens downloads", c.sidebarPage == .downloads)
             }),
-            (0.6, { TestScenarios.shot("spaces-downloads-dark") }),
-            (0.2, {
-                c.toggleDownloads()
+            (0.06, {
+                // Mid-slide: downloads coming in from the left.
+                TestScenarios.shot("spaces-downloads-sliding")
+            }),
+            (0.5, {
+                check("⇧⌘L opens downloads", c.sidebarPage == .downloads)
+                TestScenarios.shot("spaces-downloads-dark")
+            }),
+            (0.2, { c.toggleDownloads() }),
+            (0.3, {
                 check("and ⇧⌘L again goes back", c.sidebarPage == .tabs)
                 c.newTab(url: page("Restored"))
                 // ⌘W on a pinned tab unloads it.

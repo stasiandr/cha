@@ -52,6 +52,31 @@ enum TestScenarios {
             at(2) { shot("arclike") }
             at(3) { NSApp.terminate(nil) }
 
+        case "download":
+            // A real download: saved where it should be, listed, and no window
+            // of Chromium's (its download bubble) pops up when it is done.
+            let page = "data:text/html,<title>Download</title>"
+                + "<a id=d href='data:text/plain;base64,aGVsbG8gZnJvbSBjaGE=' download='hello.txt'>get</a>"
+            at(1) { controller.newTab(url: page) }
+            at(3) {
+                controller.activeTab?.executeJavaScript(withUserGesture: "document.getElementById('d').click()")
+            }
+            at(6) {
+                let store = DownloadStore.shared
+                let item = store.items.first
+                SpaceChecks.check("download listed", item != nil)
+                SpaceChecks.check("download complete", item?.state == "complete", item?.state ?? "-")
+                let saved = item.map { (try? String(contentsOfFile: $0.path, encoding: .utf8)) ?? "" } ?? ""
+                SpaceChecks.check("file saved with its content", saved == "hello from cha", item?.path ?? "-")
+                let popups = NSApp.windows.filter {
+                    $0.isVisible && String(describing: type(of: $0)).contains("NativeWidget")
+                }
+                SpaceChecks.check("no Chromium window pops up", popups.isEmpty,
+                    popups.map { NSStringFromRect($0.frame) }.joined(separator: " "))
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "newtablinks":
             // Links that ask for a new tab must become cha's tabs, never a
             // window of Chromium's own: ⌘T with a page in front, then ⌘-click.
@@ -199,16 +224,40 @@ enum TestScenarios {
                     "the page loads in it", little?.tab.currentURL.contains("From outside") == true,
                     little?.tab.currentURL ?? "-")
                 SpaceChecks.check(
-                    "its page sits under the bar",
+                    "its page fills the window under the bar",
                     little.map { l in
                         let page = l.tab.nativeWindow?.frame ?? .zero
-                        return page.maxY <= l.window.frame.maxY - LittleWindowController.barHeight + 1
-                            && page.minX >= l.window.frame.minX
-                    } ?? false)
+                        let want = l.pageScreenRect
+                        return abs(page.width - want.width) < 1 && abs(page.height - want.height) < 1
+                            && abs(page.minX - want.minX) < 1 && abs(page.maxY - want.maxY) < 1
+                    } ?? false,
+                    little.map { NSStringFromRect($0.tab.nativeWindow?.frame ?? .zero) + " want " + NSStringFromRect($0.pageScreenRect) } ?? "-")
                 SpaceChecks.check("the main window is left as it was", controller.activeSpace.tabs.count == tabsBefore)
-                little?.openInMain()
+                SpaceChecks.check(
+                    "the page's window can't be moved or resized on its own",
+                    little.map { l in
+                        let w = l.tab.nativeWindow
+                        return w?.isMovable == false && w?.styleMask.contains(.resizable) == false
+                    } ?? false)
+                // A page that resizes and moves its own window snaps back.
+                little?.tab.executeJavaScript(withUserGesture: "window.resizeTo(300, 200); window.moveTo(0, 0)")
             }
-            at(4.5) {
+            at(4.2) {
+                let little = LittleWindowController.open.first
+                SpaceChecks.check(
+                    "a page's resizeTo can't move it out of place",
+                    little.map { abs(($0.tab.nativeWindow?.frame.width ?? 0) - $0.pageScreenRect.width) < 1 } ?? false,
+                    little.map { NSStringFromRect($0.tab.nativeWindow?.frame ?? .zero) } ?? "-")
+                controller.activeTab?.executeJavaScript(withUserGesture: "window.resizeTo(300, 200)")
+            }
+            at(4.6) {
+                let page = controller.activeTab?.nativeWindow?.frame ?? .zero
+                SpaceChecks.check(
+                    "nor in the main window", abs(page.width - controller.contentScreenRect.width) < 1,
+                    NSStringFromRect(page))
+                LittleWindowController.open.first?.openInMain()
+            }
+            at(5.5) {
                 SpaceChecks.check("Open in cha closes the little window", LittleWindowController.open.isEmpty)
                 SpaceChecks.check(
                     "and the page is a tab of the main window, same browser",
@@ -216,11 +265,11 @@ enum TestScenarios {
                         && controller.activeSpace.tabs.count == tabsBefore + 1)
                 controller.openLittleWindow("data:text/html,<title>Throwaway</title>")
             }
-            at(6) {
+            at(7) {
                 let little = LittleWindowController.open.first
                 little?.close()
             }
-            at(7) {
+            at(8) {
                 SpaceChecks.check("closing it closes the page too", LittleWindowController.open.isEmpty)
                 SpaceChecks.check("and leaves the main window alone", controller.activeSpace.tabs.count == tabsBefore + 1)
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)

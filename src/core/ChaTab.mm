@@ -355,6 +355,9 @@ class TabHost : public CefClient,
   }
   bool IsFrameless(CefRefPtr<CefWindow>) override { return true; }
   bool CanMaximize(CefRefPtr<CefWindow>) override { return false; }
+  // The page's window is pinned inside cha's: it moves and resizes only
+  // with it, never by itself under the pointer.
+  bool CanResize(CefRefPtr<CefWindow>) override { return false; }
   bool CanMinimize(CefRefPtr<CefWindow>) override { return false; }
   CefRect GetInitialBounds(CefRefPtr<CefWindow>) override { return bounds_; }
   void OnWindowCreated(CefRefPtr<CefWindow> w) override {
@@ -542,6 +545,9 @@ CefRect ScreenRectToCef(NSRect frame) {
                               NSWindowCollectionBehaviorIgnoresCycle |
                               NSWindowCollectionBehaviorFullScreenAuxiliary;
   native.excludedFromWindowsMenu = YES;
+  native.movable = NO;
+  native.movableByWindowBackground = NO;
+  native.styleMask &= ~NSWindowStyleMaskResizable;
   native.hasShadow = NO;
   native.backgroundColor = NSColor.clearColor;
   native.opaque = NO;
