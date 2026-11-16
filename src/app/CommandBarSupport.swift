@@ -4,6 +4,7 @@ import SwiftUI
 // Opening, filtering and running the command bar.
 extension BrowserController {
     func openCommandBar(mode: CommandMode) {
+        commandBarOpens += 1
         commandMode = mode
         commandQuery = mode == .current ? (activeTab?.currentURL ?? "") : ""
         commandSelection = 0

@@ -52,6 +52,72 @@ enum TestScenarios {
             at(2) { shot("arclike") }
             at(3) { NSApp.terminate(nil) }
 
+        case "profiles":
+            // Accounts per space: each profile keeps its own site data.
+            let file = Persistence.directory.appendingPathComponent("storage.html")
+            try? """
+                <script>
+                const q = location.search.slice(1);
+                if (q) localStorage.setItem('who', q);
+                document.title = 'who=' + (localStorage.getItem('who') || 'none');
+                </script>
+                """.write(to: file, atomically: true, encoding: .utf8)
+            let url = file.absoluteString
+            var a = UUID(), b = UUID(), cc = UUID()
+            func title() -> String { controller.activeTab?.title ?? "-" }
+            func check(_ name: String, _ want: String) {
+                SpaceChecks.check(name, title() == want, title())
+            }
+            at(1) {
+                a = controller.activeSpaceID
+                controller.newTab(url: url + "?alpha")
+            }
+            at(3) {
+                check("space A writes in the default profile", "who=alpha")
+                controller.addSpace()
+                b = controller.activeSpaceID
+                controller.finishEditing()
+                let work = controller.addProfile(named: "Work")
+                controller.setProfile(work.id, for: b)
+                controller.newTab(url: url)
+            }
+            at(5) {
+                check("space B with its own profile sees none of it", "who=none")
+                controller.navigate(to: url + "?beta")
+            }
+            at(7) {
+                check("space B writes its own", "who=beta")
+                controller.addSpace()
+                cc = controller.activeSpaceID
+                controller.finishEditing()
+                controller.setProfile(controller.space(b)?.profileID, for: cc)
+                controller.newTab(url: url)
+            }
+            at(9) {
+                check("space C sharing B's profile sees B's", "who=beta")
+                controller.selectSpace(a, animated: false)
+                controller.newTab(url: url)
+            }
+            at(11) {
+                check("space A still has its own", "who=alpha")
+                let dirs = (try? FileManager.default.contentsOfDirectory(
+                    atPath: Persistence.directory.appendingPathComponent("Profiles").path)) ?? []
+                SpaceChecks.check("the profile has its own folder", dirs.count == 1, "\(dirs)")
+                controller.selectSpace(b, animated: false)
+                controller.navigate(to: url)
+            }
+            at(12) { controller.setProfile(nil, for: b) }
+            at(14) {
+                check("space B moved to the default profile reloads in it", "who=alpha")
+                controller.save()
+                let saved = Persistence.load()
+                SpaceChecks.check(
+                    "profiles saved", saved.profiles?.count == 1
+                        && saved.spaces.first { $0.id == cc }?.profileID == saved.profiles?.first?.id)
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "download":
             // A real download: saved where it should be, listed, and no window
             // of Chromium's (its download bubble) pops up when it is done.
@@ -90,7 +156,9 @@ enum TestScenarios {
                 }
             }
             at(1) { controller.newTab(url: page) }
+            var opensBefore = 0
             at(3) {
+                opensBefore = controller.commandBarOpens
                 guard let window = controller.activeTab?.nativeWindow,
                     let key = NSEvent.keyEvent(
                         with: .keyDown, location: .zero, modifierFlags: [.command],
@@ -101,8 +169,12 @@ enum TestScenarios {
                 NSApp.sendEvent(key)
             }
             at(4) {
+                // What matters is that ⌘T reached cha's menu; whether the bar
+                // keeps the keyboard depends on the app being active, which
+                // an off-screen run never is.
                 SpaceChecks.check("⌘T over a page opens cha's command bar",
-                    controller.commandPanel?.isVisible == true && controller.commandMode == .newTab)
+                    controller.commandBarOpens == opensBefore + 1 && controller.commandMode == .newTab,
+                    "\(opensBefore) → \(controller.commandBarOpens)")
                 SpaceChecks.check("and no Chromium window", strays().isEmpty)
                 controller.closeCommandBar()
                 before = controller.activeSpace.tabs.count

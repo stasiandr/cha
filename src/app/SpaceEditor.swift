@@ -9,6 +9,7 @@ struct SpaceEditorView: View {
     @Environment(\.colorScheme) private var scheme
     @State private var name = ""
     @State private var emojiDraft = ""
+    @State private var profileDraft = ""
     @FocusState private var nameFocused: Bool
 
     static let symbols = [
@@ -74,6 +75,10 @@ struct SpaceEditorView: View {
                     }
                 }
 
+                section("Profile") {
+                    profilePicker(style: style)
+                }
+
                 HStack {
                     if isNew {
                         Button("Cancel") { controller.finishEditing(cancelled: true) }
@@ -95,6 +100,56 @@ struct SpaceEditorView: View {
             nameFocused = true
         }
         .onExitCommand { controller.finishEditing(cancelled: isNew) }
+    }
+
+    // Which accounts the space signs in with: cookies, passwords and site
+    // data are the profile's. Several spaces may share one.
+    @ViewBuilder
+    private func profilePicker(style: SidebarStyle) -> some View {
+        let current = space?.profileID
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach([nil] + controller.profiles.map { Optional($0.id) }, id: \.self) { id in
+                Button {
+                    controller.setProfile(id, for: spaceID)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: id == nil ? "person.crop.circle" : "person.crop.circle.fill")
+                            .frame(width: 16)
+                        Text(controller.profileName(id))
+                            .font(.system(size: 13))
+                        Spacer()
+                        if current == id {
+                            Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(current == id ? style.activeTile : style.tile))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            HStack(spacing: 6) {
+                TextField("New profile", text: $profileDraft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 8)
+                    .frame(height: 26)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(style.pill))
+                    .onSubmit(addProfile)
+                Button("Add", action: addProfile)
+                    .controlSize(.small)
+                    .disabled(profileDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private func addProfile() {
+        let profile = controller.addProfile(named: profileDraft)
+        profileDraft = ""
+        controller.setProfile(profile.id, for: spaceID)
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content)

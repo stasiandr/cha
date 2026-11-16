@@ -90,7 +90,8 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         }
         window.placeTrafficLights()
 
-        let tab = ChaTab(url: url, screenFrame: pageScreenRect)
+        // The open space's profile: sign-ins as that space has them.
+        let tab = ChaTab(url: url, screenFrame: pageScreenRect, profile: main.activeSpace.profileID?.uuidString)
         tab.delegate = self
         tab.setCornerRadius(10)
         self.tab = tab

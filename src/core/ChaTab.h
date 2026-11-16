@@ -39,6 +39,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Creates the browser window at |screenFrame|; the delegate is told when ready.
 - (instancetype)initWithURL:(NSString*)url screenFrame:(NSRect)screenFrame;
+// The same in a profile of its own (nil: the default profile): separate
+// cookies, sign-ins, passwords and storage.
+- (instancetype)initWithURL:(NSString*)url
+                screenFrame:(NSRect)screenFrame
+                    profile:(nullable NSString*)profileID;
+@property(nonatomic, readonly, copy, nullable) NSString* profileID;
 
 - (void)loadURL:(NSString*)url;
 - (void)goBack;

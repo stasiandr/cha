@@ -72,6 +72,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/op
   echo "links FAILED"; failed=$((failed + 1))
 fi
 
+step "profiles: accounts per space"
+run_scenario profiles 40; code=$?
+grep -E 'CHECK ' build/check/profiles.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/profiles.log; then
+  echo "profiles FAILED"; failed=$((failed + 1))
+fi
+
 step "a download"
 run_scenario download 30; code=$?
 grep -E 'CHECK ' build/check/download.log | sed 's/^.*cha\[[^]]*\] //'

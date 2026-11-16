@@ -292,6 +292,35 @@ extension BrowserController {
         scheduleSave()
     }
 
+    // MARK: Profiles
+
+    @discardableResult
+    func addProfile(named name: String) -> ProfileData {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let profile = ProfileData(name: trimmed.isEmpty ? "Profile \(profiles.count + 1)" : trimmed)
+        profiles.append(profile)
+        scheduleSave()
+        return profile
+    }
+
+    func profileName(_ id: UUID?) -> String {
+        guard let id else { return "Default" }
+        return profiles.first { $0.id == id }?.name ?? "Default"
+    }
+
+    // A space moving to another profile reloads its tabs there: they are
+    // signed in as that profile from then on.
+    func setProfile(_ profileID: UUID?, for spaceID: UUID) {
+        guard let space = space(spaceID), space.profileID != profileID else { return }
+        updateSpace(spaceID) { $0.profileID = profileID }
+        for tab in space.tabs { unload(tab.id) }
+        if spaceID == activeSpaceID {
+            let open = activeTabID
+            if let open, favorites.contains(where: { $0.id == open }) { unload(open) }
+            activateTab(open, transition: .none)
+        }
+    }
+
     // MARK: Folders
 
     @discardableResult

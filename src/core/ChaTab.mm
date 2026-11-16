@@ -8,6 +8,8 @@
 #include "include/cef_command_handler.h"
 #include "include/cef_command_ids.h"
 #include "include/cef_context_menu_handler.h"
+#include "include/cef_request_context.h"
+#include "include/cef_request_context_handler.h"
 #include "include/cef_request_handler.h"
 #include "include/cef_download_handler.h"
 #include "include/cef_find_handler.h"
@@ -82,6 +84,56 @@ class FaviconCallback : public CefDownloadImageCallback {
 };
 
 // Client and window delegate for a single tab.
+// Profiles: each has its own Chromium profile (cookies, sign-ins, saved
+// passwords, storage) in <root>/Profiles/<id>; the default one is CEF's
+// global context, <root>/Default, as before profiles existed.
+NSString* ProfilesRoot() {
+  NSString* root = NSProcessInfo.processInfo.environment[@"CHA_PROFILE"];
+  if (root.length == 0) {
+    NSString* support = [NSSearchPathForDirectoriesInDomains(
+        NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+    root = [support stringByAppendingPathComponent:@"cha"];
+  }
+  return [root stringByAppendingPathComponent:@"Profiles"];
+}
+
+// What every profile gets once ready: downloads are cha's own.
+class ProfileHandler : public CefRequestContextHandler {
+ public:
+  void OnRequestContextInitialized(CefRefPtr<CefRequestContext> context) override {
+    const std::pair<const char*, bool> prefs[] = {
+        {"download_bubble.partial_view_enabled", false},
+        {"download.prompt_for_download", false},
+    };
+    for (const auto& [name, value] : prefs) {
+      CefRefPtr<CefValue> v = CefValue::Create();
+      v->SetBool(value);
+      CefString error;
+      context->SetPreference(name, v, error);
+    }
+  }
+  IMPLEMENT_REFCOUNTING(ProfileHandler);
+};
+
+CefRefPtr<CefRequestContext> ContextForProfile(NSString* profileID) {
+  if (profileID.length == 0) {
+    return nullptr;  // The global context: the default profile.
+  }
+  static std::map<std::string, CefRefPtr<CefRequestContext>> contexts;
+  std::string key = profileID.UTF8String;
+  auto found = contexts.find(key);
+  if (found != contexts.end()) {
+    return found->second;
+  }
+  NSString* path = [ProfilesRoot() stringByAppendingPathComponent:profileID];
+  [NSFileManager.defaultManager createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+  CefRequestContextSettings settings;
+  CefString(&settings.cache_path) = path.UTF8String;
+  CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, new ProfileHandler);
+  contexts[key] = context;
+  return context;
+}
+
 // Live downloads' callbacks, for cancelling from the downloads list.
 std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>>& DownloadCallbacks() {
   static std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>> callbacks;
@@ -119,8 +171,9 @@ class TabHost : public CefClient,
                 public CefLoadHandler,
                 public CefWindowDelegate {
  public:
-  TabHost(ChaTab* tab, const std::string& url, const CefRect& bounds)
-      : tab_(tab), url_(url), bounds_(bounds) {}
+  TabHost(ChaTab* tab, const std::string& url, const CefRect& bounds,
+          CefRefPtr<CefRequestContext> context)
+      : tab_(tab), url_(url), bounds_(bounds), context_(context) {}
 
   CefRefPtr<CefWindow> window;
   CefRefPtr<CefBrowserView> view;
@@ -364,7 +417,7 @@ class TabHost : public CefClient,
     window = w;
     w->SetToFillLayout();
     view = CefBrowserView::CreateBrowserView(this, url_, CefBrowserSettings(),
-                                             nullptr, nullptr,
+                                             nullptr, context_,
                                              new TabViewDelegate);
     w->AddChildView(view);
     w->Show();
@@ -380,6 +433,7 @@ class TabHost : public CefClient,
   __weak ChaTab* tab_;
   std::string url_;
   CefRect bounds_;
+  CefRefPtr<CefRequestContext> context_;
   IMPLEMENT_REFCOUNTING(TabHost);
 };
 
@@ -411,11 +465,18 @@ CefRect ScreenRectToCef(NSRect frame) {
 }
 
 - (instancetype)initWithURL:(NSString*)url screenFrame:(NSRect)screenFrame {
+  return [self initWithURL:url screenFrame:screenFrame profile:nil];
+}
+
+- (instancetype)initWithURL:(NSString*)url
+                screenFrame:(NSRect)screenFrame
+                    profile:(nullable NSString*)profileID {
   self = [super init];
   _cornerRadius = 12;
   _currentURL = [url copy];
   _title = @"";
-  _host = new TabHost(self, url.UTF8String, ScreenRectToCef(screenFrame));
+  _profileID = [profileID copy];
+  _host = new TabHost(self, url.UTF8String, ScreenRectToCef(screenFrame), ContextForProfile(profileID));
   CefWindow::CreateTopLevelWindow(_host);
   return self;
 }

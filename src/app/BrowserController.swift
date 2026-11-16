@@ -12,6 +12,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // Favourites are shared by every space, as in Arc.
     @Published var favorites: [TabData]
     @Published var archive: [ArchivedTab]
+    @Published var profiles: [ProfileData]
     @Published var favicons: [UUID: NSImage] = [:]
     @Published var loadingTabs: Set<UUID> = []
     @Published var sidebarVisible = true
@@ -61,6 +62,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var findPanel: CommandPanel?
     let find = FindModel()
     var commandMode: CommandMode = .newTab
+    var commandBarOpens = 0  // How many times it opened (the checks).
     var commandKeyMonitor: Any?
     var revealMonitor: Any?
     var pinning = false
@@ -77,6 +79,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         spaces = state.spaces
         favorites = state.favorites ?? []
         archive = state.archive ?? []
+        profiles = state.profiles ?? []
         let saved = state.activeSpaceID
         activeSpaceID =
             state.spaces.contains { $0.id == saved } ? saved! : state.spaces[0].id
@@ -513,10 +516,22 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     // Tabs restored from disk have no browser yet; one is made on demand.
+    // The profile a tab opens in: its space's; a favourite, the open space's.
+    func profileKey(for id: UUID) -> String? {
+        let space = spaceContaining(id) ?? activeSpace
+        return space.profileID?.uuidString
+    }
+
     @discardableResult
     func liveTab(_ id: UUID, url: String) -> ChaTab {
-        if let existing = liveTabs[id] { return existing }
-        let tab = ChaTab(url: url, screenFrame: contentScreenRect)
+        let profile = profileKey(for: id)
+        if let existing = liveTabs[id] {
+            if existing.profileID == profile { return existing }
+            // A favourite opened from a space with another profile loads
+            // again in that profile.
+            unload(id)
+        }
+        let tab = ChaTab(url: url, screenFrame: contentScreenRect, profile: profile)
         register(tab, as: id)
         Diagnostics.mark("first-tab-created")
         return tab
@@ -1119,6 +1134,6 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
                 spaces: spaces, activeSpaceID: activeSpaceID,
                 sidebarWidth: Double(sidebarWidth), sidebarFraction: Double(sidebarFraction),
                 favorites: favorites,
-                archive: archive))
+                archive: archive, profiles: profiles))
     }
 }

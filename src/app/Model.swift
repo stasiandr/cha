@@ -45,6 +45,13 @@ func displayHost(_ url: String) -> String? {
     return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
 }
 
+// A Chromium profile: its own cookies, sign-ins, saved passwords and site
+// data. Spaces pick one (several may share it); none means the default.
+struct ProfileData: Codable, Identifiable, Equatable, Hashable {
+    var id = UUID()
+    var name: String
+}
+
 struct FolderData: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
@@ -59,6 +66,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
     var tabs: [TabData] = []
     var folders: [FolderData] = []
     var activeTabID: UUID?
+    var profileID: UUID?
 
     var pinnedTabs: [TabData] { tabs.filter(\.isPinned) }
     var unpinnedTabs: [TabData] { tabs.filter { !$0.isPinned } }
@@ -83,7 +91,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, symbol, theme, tint, tabs, folders, activeTabID
+        case id, name, symbol, theme, tint, tabs, folders, activeTabID, profileID
     }
 
     // Older state files kept the colour as one of six names under "tint".
@@ -101,6 +109,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
         tabs = try c.decodeIfPresent([TabData].self, forKey: .tabs) ?? []
         folders = try c.decodeIfPresent([FolderData].self, forKey: .folders) ?? []
         activeTabID = try c.decodeIfPresent(UUID.self, forKey: .activeTabID)
+        profileID = try c.decodeIfPresent(UUID.self, forKey: .profileID)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -112,6 +121,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
         try c.encode(tabs, forKey: .tabs)
         try c.encode(folders, forKey: .folders)
         try c.encodeIfPresent(activeTabID, forKey: .activeTabID)
+        try c.encodeIfPresent(profileID, forKey: .profileID)
     }
 }
 
@@ -189,6 +199,7 @@ struct BrowserState: Codable {
     var sidebarFraction: Double?  // Share of the window's width.
     var favorites: [TabData]?
     var archive: [ArchivedTab]?
+    var profiles: [ProfileData]?
 
     static var initial: BrowserState {
         var space = SpaceData(
