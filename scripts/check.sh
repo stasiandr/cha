@@ -5,6 +5,8 @@
 #
 #   scripts/check.sh          # build + spaces + codes + bench
 #   scripts/check.sh fast     # build + spaces
+#   scripts/check.sh window   # build + spaces in a real, visible window;
+#                             # exits 75 without running when the Mac is in use
 #
 # Pictures land in build/shots, logs in build/check. Exit code = failed steps.
 set -uo pipefail
@@ -15,10 +17,16 @@ failed=0
 
 step() { printf '\n== %s\n' "$1"; }
 
+headless=1
+if [ "$mode" = window ]; then
+  if ! ~/.local/bin/mac-idle; then echo "Mac in use: windowed run skipped"; exit 75; fi
+  headless=
+fi
+
 run_scenario() {  # name, timeout seconds
   local name="$1" limit="$2" profile="build/check/profile-$1"
   rm -rf "$profile"
-  CHA_HEADLESS=1 CHA_TEST="$name" CHA_PROFILE="$PWD/$profile" \
+  CHA_HEADLESS=$headless CHA_TEST="$name" CHA_PROFILE="$PWD/$profile" \
     build/cha.app/Contents/MacOS/cha >"build/check/$name.log" 2>&1 &
   local pid=$! waited=0
   while kill -0 "$pid" 2>/dev/null; do

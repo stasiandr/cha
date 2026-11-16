@@ -37,6 +37,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var pageOffset: CGFloat = 0
     @Published var pageNeighbor: (left: UUID?, right: UUID?) = (nil, nil)
     var pageAnimating = false
+    var pageGeneration = 0
 
     @Published var sidebarWidth: CGFloat = 250
     static let minSidebarWidth: CGFloat = 180

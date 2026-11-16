@@ -39,28 +39,30 @@ extension BrowserController {
         }
         let forward = target > activeSpaceIndex
         pageNeighbor = forward ? (nil, id) : (id, nil)
-        pageAnimating = true
         applySpaceTint(spaces[target].theme)
-        withAnimation(.spring(duration: 0.32, bounce: 0.0)) {
-            pageOffset = forward ? -width : width
-        } completion: { [weak self] in
-            self?.commitSpace(id)
-        }
-        commitLater(id, after: 0.45)
+        slidePage(to: forward ? -width : width, duration: 0.32, then: id)
     }
 
-    // SwiftUI reports the end of an animation from the display's refresh;
-    // a window that is hidden or covered may never get one, so the switch
-    // also happens on a timer. Whichever comes first wins.
-    private func commitLater(_ id: UUID?, after delay: Double) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, self.pageAnimating else { return }
-            if let id {
-                self.commitSpace(id)
-            } else {
-                self.settlePage()
-            }
+    // Animates the page to |offset|, then opens |space| (or just settles when
+    // nil). Each slide has a number; only the latest may finish, so a late
+    // completion from an earlier slide can't open the wrong space.
+    func slidePage(to offset: CGFloat, duration: Double, then space: UUID?) {
+        pageGeneration += 1
+        let generation = pageGeneration
+        pageAnimating = true
+        let finish: () -> Void = { [weak self] in
+            guard let self, self.pageGeneration == generation, self.pageAnimating else { return }
+            if let space { self.commitSpace(space) } else { self.settlePage() }
         }
+        withAnimation(.spring(duration: duration, bounce: 0.0)) {
+            pageOffset = offset
+        } completion: {
+            finish()
+        }
+        // SwiftUI reports the end of an animation from the display's refresh;
+        // a window that is hidden or covered may never get one, so the slide
+        // also finishes on a timer. Whichever comes first wins.
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.1, execute: finish)
     }
 
     private func settlePage() {
@@ -72,7 +74,6 @@ extension BrowserController {
 
     // The switch itself, once the page has slid over.
     func commitSpace(_ id: UUID) {
-        if id == activeSpaceID, !pageAnimating, pageOffset == 0 { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -190,25 +191,14 @@ extension BrowserController {
             target = nil
         }
 
-        pageAnimating = true
         guard let target else {
             applySpaceTint()
-            withAnimation(.spring(duration: 0.28, bounce: 0.0)) {
-                pageOffset = 0
-            } completion: { [weak self] in
-                self?.pageAnimating = false
-            }
-            commitLater(nil, after: 0.4)
+            slidePage(to: 0, duration: 0.28, then: nil)
             return
         }
         let forward = pageOffset < 0
         applySpaceTint(target.theme)
-        withAnimation(.spring(duration: 0.26, bounce: 0.0)) {
-            pageOffset = forward ? -width : width
-        } completion: { [weak self] in
-            self?.commitSpace(target.id)
-        }
-        commitLater(target.id, after: 0.4)
+        slidePage(to: forward ? -width : width, duration: 0.26, then: target.id)
     }
 
     // MARK: Making and editing

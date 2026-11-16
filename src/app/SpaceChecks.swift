@@ -24,12 +24,14 @@ enum SpaceChecks {
         "data:text/html,<title>\(text)</title><h1>\(text)</h1>"
     }
 
-    // Runs the steps one after another, |gap| seconds apart.
+    // Runs the steps one after another, each |gap| seconds after the
+    // previous one finished (not after the start: a slow step must not make
+    // the next ones bunch up).
     static func sequence(_ steps: [(Double, () -> Void)]) {
-        var time = 0.0
-        for (gap, step) in steps {
-            time += gap
-            DispatchQueue.main.asyncAfter(deadline: .now() + time, execute: step)
+        guard let (gap, step) = steps.first else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + gap) {
+            step()
+            sequence(Array(steps.dropFirst()))
         }
     }
 
@@ -273,8 +275,20 @@ enum SpaceChecks {
                 check("cancelled new space removed", c.spaces.count == 2)
             }),
             (0.8, {
+                // Many spaces: the inactive ones shrink to dots.
+                for _ in 0..<8 {
+                    c.addSpace()
+                    c.finishEditing()
+                }
                 c.selectSpace(work, animated: false)
                 NSApp.appearance = light
+            }),
+            (0.8, {
+                TestScenarios.shot("spaces-many-light")
+                for space in c.spaces where space.id != work && space.id != personal {
+                    c.deleteSpace(space.id, confirm: false)
+                }
+                check("extra spaces deleted", c.spaces.count == 2)
             }),
             (0.8, { TestScenarios.shot("spaces-final-light") }),
             (0.2, {

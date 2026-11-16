@@ -78,7 +78,8 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
     }
     // Test runs happen while someone works at this Mac: no sound, and pages
     // keep painting although their windows sit off screen.
-    if (getenv("CHA_HEADLESS")) {
+    const char* headless = getenv("CHA_HEADLESS");
+    if (headless && *headless) {
       command_line->AppendSwitch("mute-audio");
       command_line->AppendSwitch("disable-backgrounding-occluded-windows");
       command_line->AppendSwitch("disable-renderer-backgrounding");

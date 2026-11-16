@@ -70,19 +70,7 @@ struct SpaceEditorView: View {
                         ForEach(SpaceTheme.presets, id: \.self) { theme in
                             swatch(theme)
                         }
-                        ColorPicker(
-                            "",
-                            selection: Binding(
-                                get: { Color(space?.theme.color ?? .systemBlue) },
-                                set: { color in
-                                    controller.updateSpace(spaceID) {
-                                        $0.theme = SpaceTheme(NSColor(color))
-                                    }
-                                }),
-                            supportsOpacity: false
-                        )
-                        .labelsHidden()
-                        .help("Any colour")
+                        customColorButton
                     }
                 }
 
@@ -141,6 +129,31 @@ struct SpaceEditorView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    // Any colour: a rainbow swatch that opens the system colour panel, which
+    // recolours the space live as you drag.
+    private var customColorButton: some View {
+        let custom = space.map { !SpaceTheme.presets.contains($0.theme) } ?? false
+        return Button {
+            ThemeColorPanel.shared.open(for: spaceID, current: space?.theme, controller: controller)
+        } label: {
+            Circle()
+                .fill(
+                    AngularGradient(
+                        colors: [.red, .orange, .yellow, .green, .teal, .blue, .purple, .pink, .red],
+                        center: .center)
+                )
+                .frame(width: 22, height: 22)
+                .overlay(
+                    Circle().strokeBorder(.primary.opacity(custom ? 0.8 : 0), lineWidth: 2)
+                        .padding(-3))
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Any colour")
     }
 
     private func swatch(_ theme: SpaceTheme) -> some View {
@@ -236,5 +249,29 @@ struct ArchiveView: View {
         .onHover { hovered = $0 ? item.id : nil }
         .onTapGesture { controller.restoreArchived(item.id) }
         .help(item.url)
+    }
+}
+
+// Bridges NSColorPanel to a space's theme.
+final class ThemeColorPanel: NSObject {
+    static let shared = ThemeColorPanel()
+    private weak var controller: BrowserController?
+    private var spaceID: UUID?
+
+    func open(for spaceID: UUID, current: SpaceTheme?, controller: BrowserController) {
+        self.spaceID = spaceID
+        self.controller = controller
+        let panel = NSColorPanel.shared
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.setTarget(self)
+        panel.setAction(#selector(colorChanged(_:)))
+        if let current { panel.color = current.color }
+        panel.orderFront(nil)
+    }
+
+    @objc private func colorChanged(_ panel: NSColorPanel) {
+        guard let spaceID, let controller else { return }
+        controller.updateSpace(spaceID) { $0.theme = SpaceTheme(panel.color) }
     }
 }

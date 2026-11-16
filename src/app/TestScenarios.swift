@@ -191,10 +191,28 @@ enum TestScenarios {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: body)
     }
 
+    // The real screen where the main window is, pages included. Only for
+    // windowed runs (scripts/check.sh window), which happen when nobody is
+    // at this Mac.
+    static func screenShot(_ name: String) {
+        guard let window = NSApp.windows.first(where: { $0 is BrowserWindow }),
+            let screen = window.screen ?? NSScreen.screens.first
+        else { return }
+        let top = (NSScreen.screens.first?.frame.height ?? screen.frame.height)
+        let f = window.frame
+        let rect = "\(Int(f.minX)),\(Int(top - f.maxY)),\(Int(f.width)),\(Int(f.height))"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-R\(rect)", "build/shots/\(name).png"]
+        try? process.run()
+        process.waitUntilExit()
+    }
+
     // A picture of the main window drawn from its views, with the active
     // tab's page laid over the content area: works off screen and while the
     // display sleeps, unlike screencapture.
     static func shot(_ name: String) {
+        if !Diagnostics.headless { screenShot(name + "-window") }
         guard let window = NSApp.windows.first(where: { $0 is BrowserWindow }),
             let content = window.contentView
         else { return }

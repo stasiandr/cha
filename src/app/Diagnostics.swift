@@ -6,7 +6,7 @@ enum Diagnostics {
     // CHA_HEADLESS=1: the windows live far off screen, the app never takes
     // focus and has no Dock icon, so a run does not get in the way of whoever
     // is using this Mac. Everything else behaves as usual.
-    static let headless = ProcessInfo.processInfo.environment["CHA_HEADLESS"] != nil
+    static let headless = !(ProcessInfo.processInfo.environment["CHA_HEADLESS"] ?? "").isEmpty
 
     static let offscreenOrigin = NSPoint(x: -30000, y: -30000)
 
