@@ -94,7 +94,23 @@ on any display. Hover and drags (tab onto a space icon, reordering tabs,
 reordering space icons) need the window server's cursor, so they move the
 real mouse and run only when the Mac is idle (`CHA_REAL_INPUT=1`, set by
 check.sh window); otherwise they are reported as skipped, not passed. The
-colour panel's live recolouring is checked through its action. The swipe is checked through synthesized
+colour panel's live recolouring is checked through its action.
+
+Run on 2026-11-16 with the real cursor (Mac idle, main display): 9/9 —
+click opens a tab, click on a space icon switches (and back), hover shows
+the close button on that row only, a tab dragged onto a space icon moves
+there, dragging reorders tabs, dragging space icons reorders spaces, the
+colour panel recolours the space.
+
+### Launch and quit against Arc — not measured yet
+
+`scripts/launchbench.swift` times any app the same way from outside
+(LaunchServices launch → first window on screen; quit Apple event →
+windows gone → process gone). Measuring Arc means quitting and reopening
+it several times, so it waits for a time the Mac is free:
+
+    build/launchbench /Applications/Arc.app 5
+    build/launchbench build/cha.app 5 CHA_PROFILE=$PWD/build/bench-profile The swipe is checked through synthesized
 scroll events fed to the handler; the direction for natural scrolling
 follows `isDirectionInvertedFromDevice`.
 
