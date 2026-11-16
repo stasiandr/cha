@@ -30,6 +30,7 @@
 - (void)cefBrowserClosed;
 - (void)cefRequestsNewTab:(NSString*)url;
 - (void)cefRequestsNewTab:(NSString*)url background:(BOOL)background;
+- (void)cefRequestsPeek:(NSString*)url;
 - (void)cefDidFinishLoad;
 - (void)cefChanged;
 @end
@@ -134,6 +135,18 @@ CefRefPtr<CefRequestContext> ContextForProfile(NSString* profileID) {
   return context;
 }
 
+// The site a URL belongs to, for "is this another website": the host less
+// "www." and, beyond two labels, its leading ones (mail.google.com and
+// docs.google.com are one site). Good enough without a public-suffix list.
+NSString* SiteOf(NSString* url) {
+  NSString* host = [NSURL URLWithString:url].host.lowercaseString ?: @"";
+  NSArray<NSString*>* labels = [host componentsSeparatedByString:@"."];
+  if (labels.count > 2 && [host rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet].location != NSNotFound) {
+    labels = [labels subarrayWithRange:NSMakeRange(labels.count - 2, 2)];
+  }
+  return [labels componentsJoinedByString:@"."];
+}
+
 // Live downloads' callbacks, for cancelling from the downloads list.
 std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>>& DownloadCallbacks() {
   static std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>> callbacks;
@@ -220,6 +233,29 @@ class TabHost : public CefClient,
     }
   }
 
+  // CefRequestHandler: a pinned tab (or favourite) stays on its site, as in
+  // Arc. A link the user follows to another site opens in a Peek over the
+  // page instead of taking the tab away.
+  bool OnBeforeBrowse(CefRefPtr<CefBrowser>,
+                      CefRefPtr<CefFrame> frame,
+                      CefRefPtr<CefRequest> request,
+                      bool user_gesture,
+                      bool is_redirect) override {
+    ChaTab* tab = tab_;
+    if (!tab.keepsItsSite || !frame->IsMain() || !user_gesture || is_redirect) {
+      return false;
+    }
+    NSString* target = ToNSString(request->GetURL());
+    NSString* here = tab.currentURL;
+    if (![target hasPrefix:@"http"] || [SiteOf(target) isEqualToString:SiteOf(here)]) {
+      return false;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [tab cefRequestsPeek:target];
+    });
+    return true;  // Cancelled: the pinned tab stays where it is.
+  }
+
   // CefRequestHandler: ⌘-click (background), ⇧⌘-click and middle click.
   bool OnOpenURLFromTab(CefRefPtr<CefBrowser>,
                         CefRefPtr<CefFrame>,
@@ -234,9 +270,14 @@ class TabHost : public CefClient,
       case CEF_WOD_OFF_THE_RECORD: {
         NSString* url = ToNSString(target_url);
         BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
+        BOOL peek = disposition == CEF_WOD_NEW_WINDOW;
         ChaTab* tab = tab_;
         dispatch_async(dispatch_get_main_queue(), ^{
-          [tab cefRequestsNewTab:url background:background];
+          if (peek) {
+            [tab cefRequestsPeek:url];
+          } else {
+            [tab cefRequestsNewTab:url background:background];
+          }
         });
         return true;  // Cancelled here: cha opens it.
       }
@@ -382,19 +423,25 @@ class TabHost : public CefClient,
                      const CefString& target_url,
                      const CefString&,
                      WindowOpenDisposition disposition,
-                     bool,
+                     bool user_gesture,
                      const CefPopupFeatures&,
                      CefWindowInfo&,
                      CefRefPtr<CefClient>&,
                      CefBrowserSettings&,
                      CefRefPtr<CefDictionaryValue>&,
                      bool*) override {
-    // ⌘-click on a link arrives here too, as a background tab.
+    // ⌘-click on a link arrives here too, as a background tab; ⇧-click as a
+    // new window, which in cha (as in Arc) is a Peek.
     NSString* url = ToNSString(target_url);
     BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
+    BOOL peek = disposition == CEF_WOD_NEW_WINDOW && user_gesture;
     ChaTab* tab = tab_;
     dispatch_async(dispatch_get_main_queue(), ^{
-      [tab cefRequestsNewTab:url background:background];
+      if (peek) {
+        [tab cefRequestsPeek:url];
+      } else {
+        [tab cefRequestsNewTab:url background:background];
+      }
     });
     return true;  // Handled: the app opens its own tab instead.
   }
@@ -628,6 +675,14 @@ CefRect ScreenRectToCef(NSRect frame) {
 
 - (void)cefRequestsNewTab:(NSString*)url {
   [self.delegate tab:self requestsNewTabWithURL:url];
+}
+
+- (void)cefRequestsPeek:(NSString*)url {
+  if ([self.delegate respondsToSelector:@selector(tab:requestsPeekWithURL:)]) {
+    [self.delegate tab:self requestsPeekWithURL:url];
+  } else {
+    [self.delegate tab:self requestsNewTabWithURL:url];
+  }
 }
 
 - (void)cefRequestsNewTab:(NSString*)url background:(BOOL)background {

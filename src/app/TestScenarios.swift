@@ -52,6 +52,70 @@ enum TestScenarios {
             at(2) { shot("arclike") }
             at(3) { NSApp.terminate(nil) }
 
+        case "peek":
+            // Peek, against a real web server where localhost and 127.0.0.1
+            // are two sites (scripts/check.sh serves the pages).
+            let port = ProcessInfo.processInfo.environment["CHA_TEST_PORT"] ?? "0"
+            let home = "http://localhost:\(port)/a.html"
+            func click(_ id: String) {
+                controller.activeTab?.executeJavaScript(withUserGesture: "document.getElementById('\(id)').click()")
+            }
+            func here() -> String { controller.activeTab?.currentURL ?? "-" }
+            at(1) {
+                controller.newTab(url: home)
+            }
+            at(3) {
+                controller.togglePin(controller.activeTabID!)
+                click("other")
+            }
+            at(4.5) {
+                SpaceChecks.check("a pinned tab's link to another site opens a Peek", controller.peek != nil)
+                SpaceChecks.check(
+                    "with that site in it", controller.peek?.tab.currentURL.contains("127.0.0.1") == true,
+                    controller.peek?.tab.currentURL ?? "-")
+                SpaceChecks.check("and the pinned tab stays where it was", here() == home, here())
+                if let card = controller.peek?.tab.nativeWindow?.frame {
+                    SpaceChecks.check(
+                        "the Peek sits over the page, inside it",
+                        controller.contentScreenRect.contains(card) && card.width < controller.contentScreenRect.width,
+                        NSStringFromRect(card))
+                }
+                controller.peek?.close()
+            }
+            at(5.2) {
+                SpaceChecks.check("closing the Peek leaves the tab as it was", controller.peek == nil && here() == home)
+                click("same")
+            }
+            at(6.5) {
+                SpaceChecks.check("a link within the site goes there, no Peek",
+                    controller.peek == nil && here().hasSuffix("/b.html") && here().contains("localhost"), here())
+                controller.navigate(to: home)
+            }
+            at(7.5) {
+                controller.togglePin(controller.activeTabID!)  // An ordinary tab now.
+                click("other")
+            }
+            at(9) {
+                SpaceChecks.check("an ordinary tab just follows the link", controller.peek == nil && here().contains("127.0.0.1"), here())
+                controller.navigate(to: home)
+            }
+            at(10.5) {
+                // ⇧-click with the real mouse event, on the fixed link.
+                controller.activeTab?.clickAt(x: 60, y: 160, modifiers: 1 << 1)
+            }
+            at(12) {
+                SpaceChecks.check("⇧-click opens any link in a Peek", controller.peek != nil, here())
+                let tabsBefore = controller.activeSpace.tabs.count
+                controller.peek?.expand()
+                SpaceChecks.check("expanding makes it a tab", controller.peek == nil
+                    && controller.activeSpace.tabs.count == tabsBefore + 1)
+            }
+            at(13) {
+                SpaceChecks.check("the open tab is the Peek's page", here().contains("127.0.0.1"), here())
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "profiles":
             // Accounts per space: each profile keeps its own site data.
             let file = Persistence.directory.appendingPathComponent("storage.html")

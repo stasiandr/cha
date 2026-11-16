@@ -190,14 +190,22 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func newTab() { controller?.openCommandBar(mode: .newTab) }
     // In a little window ⌘W closes the window, not a tab of the main one.
     @objc func closeTab() {
-        if let little = LittleWindowController.key {
+        if let peek = controller?.peek {
+            peek.close()
+        } else if let little = LittleWindowController.key {
             little.close()
         } else {
             controller?.closeActiveTab()
         }
     }
     @objc func newLittleWindow() { controller?.openLittleWindow("about:blank") }
-    @objc func openInMainWindow() { LittleWindowController.key?.openInMain() }
+    @objc func openInMainWindow() {
+        if let peek = controller?.peek {
+            peek.expand()
+        } else {
+            LittleWindowController.key?.openInMain()
+        }
+    }
     @objc func emptyTab() { controller?.newTab() }
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
         controller?.activateTabAtIndex(sender.tag)

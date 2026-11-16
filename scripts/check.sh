@@ -37,7 +37,7 @@ fi
 run_scenario() {  # name, timeout seconds
   local name="$1" limit="$2" profile="build/check/profile-$1"
   rm -rf "$profile"
-  CHA_DOWNLOADS="$PWD/$profile/Downloads" CHA_HEADLESS=$headless CHA_REAL_INPUT=$real_input CHA_TEST="$name" \
+  CHA_TEST_PORT="${CHA_TEST_PORT:-}" CHA_DOWNLOADS="$PWD/$profile/Downloads" CHA_HEADLESS=$headless CHA_REAL_INPUT=$real_input CHA_TEST="$name" \
     CHA_PROFILE="$PWD/$profile" \
     build/cha.app/Contents/MacOS/cha >"build/check/$name.log" 2>&1 &
   local pid=$! waited=0
@@ -70,6 +70,25 @@ run_scenario openurl 30; code=$?
 grep -E 'CHECK |CHECKS' build/check/openurl.log | sed 's/^.*cha\[[^]]*\] //'
 if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/openurl.log; then
   echo "links FAILED"; failed=$((failed + 1))
+fi
+
+step "Peek (a local web server: localhost and 127.0.0.1 are two sites)"
+site="build/check/peek-site"; rm -rf "$site"; mkdir -p "$site"
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+cat > "$site/a.html" <<HTML
+<title>A</title>
+<a id=same href="/b.html" style="position:fixed;left:0;top:0;width:300px;height:100px;display:block">same</a>
+<a id=other href="http://127.0.0.1:$port/b.html" style="position:fixed;left:0;top:120px;width:300px;height:100px;display:block">other</a>
+HTML
+echo "<title>B</title>b" > "$site/b.html"
+python3 -m http.server "$port" --bind 127.0.0.1 --directory "$site" >/dev/null 2>&1 &
+server=$!
+sleep 0.5
+CHA_TEST_PORT=$port run_scenario peek 40; code=$?
+kill "$server" 2>/dev/null
+grep -E 'CHECK ' build/check/peek.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/peek.log; then
+  echo "peek FAILED"; failed=$((failed + 1))
 fi
 
 step "profiles: accounts per space"

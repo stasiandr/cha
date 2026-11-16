@@ -16,6 +16,9 @@ NS_ASSUME_NONNULL_BEGIN
 // The web content closed itself.
 - (void)tabDidClose:(ChaTab*)tab;
 @optional
+// A link to show in a Peek over the page: another site followed from a
+// tab that keeps its site, or a ⇧-click.
+- (void)tab:(ChaTab*)tab requestsPeekWithURL:(NSString*)url;
 // A link to open in a new tab without leaving this one (⌘-click, the
 // context menu's Open Link in New Tab).
 - (void)tab:(ChaTab*)tab requestsBackgroundTabWithURL:(NSString*)url;
@@ -45,6 +48,8 @@ NS_ASSUME_NONNULL_BEGIN
                 screenFrame:(NSRect)screenFrame
                     profile:(nullable NSString*)profileID;
 @property(nonatomic, readonly, copy, nullable) NSString* profileID;
+// Pinned tabs and favourites: links to other sites go to a Peek.
+@property(nonatomic) BOOL keepsItsSite;
 
 - (void)loadURL:(NSString*)url;
 - (void)goBack;

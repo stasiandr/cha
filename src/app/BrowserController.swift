@@ -60,6 +60,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var sidebarWidthConstraint: NSLayoutConstraint?
     var commandPanel: CommandPanel?
     var findPanel: CommandPanel?
+    var peek: PeekController?
+    var peekKeyMonitor: Any?
     let find = FindModel()
     var commandMode: CommandMode = .newTab
     var commandBarOpens = 0  // How many times it opened (the checks).
@@ -229,6 +231,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func layoutActiveTab() {
         layoutContentWell()
         repositionFindBar()
+        peek?.layout()
         guard let id = activeSpace.activeTabID, let tab = liveTabs[id],
             let native = tab.nativeWindow
         else { return }
@@ -446,8 +449,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         quitCompletion = completion
         let little = LittleWindowController.open
         for item in little { item.window.orderOut(nil) }
-        pendingCloses = liveTabs.count + little.count
-        let tabs = Array(liveTabs.values) + little.compactMap(\.tab)
+        let peekTabs = peek.flatMap { $0.closed ? nil : $0.tab }.map { [$0] } ?? []
+        pendingCloses = liveTabs.count + little.count + peekTabs.count
+        let tabs = Array(liveTabs.values) + little.compactMap(\.tab) + peekTabs
         if tabs.isEmpty { finishQuit() }
         for tab in tabs { tab.close() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
@@ -491,6 +495,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func activateTab(_ id: UUID?, transition: PageTransition = .fade) {
         if id != activeTabID {
             closeFindBar()
+            peek?.close()
             pictureInPictureForSwitch(from: activeTabID, to: id)
         }
         guard let id, let data = tabData(id) else {
@@ -507,6 +512,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         addressText = data.url
 
         let tab = liveTab(id, url: data.url)
+        refreshKeepsSite(id)
         contentWell?.isHidden = false
         showOnly(tabID: id, transition: transition)
         canGoBack = tab.canGoBack
@@ -831,6 +837,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let firstToday = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
         space.tabs.insert(tab, at: firstToday)
         replace(space)
+        refreshKeepsSite(id)
     }
 
     func addToFavorites(_ id: UUID, before targetID: UUID? = nil) {
@@ -841,6 +848,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let index = targetID.flatMap { t in favorites.firstIndex { $0.id == t } } ?? favorites.count
         favorites.insert(tab, at: index)
         scheduleSave()
+        refreshKeepsSite(id)
     }
 
     // A favourite that is let go becomes a pinned tab of the current space.
