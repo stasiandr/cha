@@ -55,7 +55,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // MARK: - Window
 
     func showWindow() {
-        let window = NSWindow(
+        let window = BrowserWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [
                 .titled, .closable, .miniaturizable, .resizable,
@@ -104,9 +104,15 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             sidebarWidthConstraint,
         ])
 
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        if Diagnostics.headless {
+            window.setFrameOrigin(Diagnostics.offscreenOrigin)
+            window.orderFront(nil)
+        } else {
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+        }
         self.window = window
+        Diagnostics.mark("window")
         applySpaceTint()
 
         activateTab(activeSpace.activeTabID ?? activeSpace.tabs.first?.id)
@@ -181,11 +187,51 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         layoutActiveTab()
     }
 
+    // Closing the only window quits, the same way ⌘Q does.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        NSApp.terminate(nil)
+        return false
+    }
+
+    // MARK: - Quitting
+
+    private var isQuitting = false
+    private var pendingCloses = 0
+    private var quitCompletion: (() -> Void)?
+
+    // Quitting looks instant: the state is saved and every window disappears
+    // at once, then the browsers close behind the scenes. Chromium only lets
+    // the message loop end once they have; a tab that never answers gets a
+    // couple of seconds.
+    func prepareToQuit(_ completion: @escaping () -> Void) {
+        guard !isQuitting else { return }
+        isQuitting = true
         save()
-        for tab in liveTabs.values { tab.close() }
-        ChaEngine.shared.quit()
-        return true
+        closeCommandBar()
+        for tab in liveTabs.values {
+            if let native = tab.nativeWindow {
+                if native.parent != nil { window.removeChildWindow(native) }
+                native.orderOut(nil)
+            }
+        }
+        window?.orderOut(nil)
+        Diagnostics.mark("windows-hidden")
+
+        quitCompletion = completion
+        pendingCloses = liveTabs.count
+        let tabs = Array(liveTabs.values)
+        if tabs.isEmpty { finishQuit() }
+        for tab in tabs { tab.close() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.finishQuit()
+        }
+    }
+
+    private func finishQuit() {
+        guard let completion = quitCompletion else { return }
+        quitCompletion = nil
+        Diagnostics.mark("browsers-closed")
+        completion()
     }
 
     // MARK: - Spaces
@@ -274,6 +320,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             tab.delegate = self
             liveTabs[id] = tab
             tabIDsByObject[ObjectIdentifier(tab)] = id
+            Diagnostics.mark("first-tab-created")
         }
         showOnly(tabID: id)
         canGoBack = tab.canGoBack
@@ -429,6 +476,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // MARK: - ChaTabDelegate
 
     func tabDidBecomeReady(_ tab: ChaTab) {
+        Diagnostics.mark("first-tab-ready")
         guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
         if activeSpace.activeTabID == id {
             showOnly(tabID: id)
@@ -455,6 +503,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func tabDidFinishLoad(_ tab: ChaTab) {
+        Diagnostics.mark("first-load-end")
         guard let id = tabIDsByObject[ObjectIdentifier(tab)],
             activeSpace.activeTabID == id
         else { return }
@@ -466,6 +515,12 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func tabDidClose(_ tab: ChaTab) {
+        if isQuitting {
+            // The tab stays in the saved state; only its browser went away.
+            pendingCloses -= 1
+            if pendingCloses <= 0 { finishQuit() }
+            return
+        }
         guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
         liveTabs.removeValue(forKey: id)
         tabIDsByObject.removeValue(forKey: ObjectIdentifier(tab))
@@ -503,7 +558,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     private func scheduleSave() {
-        guard !saveScheduled else { return }
+        guard !saveScheduled, !isQuitting else { return }
         saveScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.saveScheduled = false

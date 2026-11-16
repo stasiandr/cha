@@ -4,6 +4,25 @@
 #include "include/cef_application_mac.h"
 #include "include/wrapper/cef_library_loader.h"
 
+#include <sys/sysctl.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+// Milliseconds since the kernel started this process, for the TIMING marks.
+static double ChaMillisSinceStart() {
+  struct kinfo_proc info;
+  size_t size = sizeof(info);
+  int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()};
+  struct timeval now;
+  gettimeofday(&now, nullptr);
+  if (sysctl(mib, 4, &info, &size, nullptr, 0) != 0) {
+    return 0;
+  }
+  struct timeval start = info.kp_proc.p_starttime;
+  return (now.tv_sec - start.tv_sec) * 1000.0 +
+         (now.tv_usec - start.tv_usec) / 1000.0;
+}
+
 // CEF needs an NSApplication that reports when it is dispatching an event.
 @interface ChaApplication : NSApplication <CefAppProtocol> {
   BOOL handlingSendEvent_;
@@ -22,7 +41,15 @@
   [super sendEvent:event];
 }
 - (void)terminate:(id)sender {
-  CefQuitMessageLoop();
+  fprintf(stderr, "TIMING quit-requested %.0f\n", ChaMillisSinceStart());
+  // The browsers have to close before the loop may end; the delegate does
+  // that and calls -quit once they have.
+  id<ChaEngineDelegate> delegate = ChaEngine.shared.delegate;
+  if ([delegate respondsToSelector:@selector(engineWillQuit)]) {
+    [delegate engineWillQuit];
+  } else {
+    CefQuitMessageLoop();
+  }
 }
 @end
 
@@ -48,6 +75,13 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
     // once the app is signed.
     if (!getenv("CHA_REAL_KEYCHAIN")) {
       command_line->AppendSwitch("use-mock-keychain");
+    }
+    // Test runs happen while someone works at this Mac: no sound, and pages
+    // keep painting although their windows sit off screen.
+    if (getenv("CHA_HEADLESS")) {
+      command_line->AppendSwitch("mute-audio");
+      command_line->AppendSwitch("disable-backgrounding-occluded-windows");
+      command_line->AppendSwitch("disable-renderer-backgrounding");
     }
   }
 
@@ -89,9 +123,12 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
 
   CefSettings settings;
   settings.no_sandbox = true;
-  NSString* support = [NSSearchPathForDirectoriesInDomains(
-      NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
-  NSString* root = [support stringByAppendingPathComponent:@"cha"];
+  NSString* root = NSProcessInfo.processInfo.environment[@"CHA_PROFILE"];
+  if (root.length == 0) {
+    NSString* support = [NSSearchPathForDirectoriesInDomains(
+        NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+    root = [support stringByAppendingPathComponent:@"cha"];
+  }
   CefString(&settings.root_cache_path) = root.UTF8String;
   CefString(&settings.cache_path) =
       [root stringByAppendingPathComponent:@"Default"].UTF8String;

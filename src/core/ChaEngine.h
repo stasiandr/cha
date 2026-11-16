@@ -5,6 +5,9 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol ChaEngineDelegate <NSObject>
 // Called once CEF is ready; build the UI here.
 - (void)engineDidInitialize;
+@optional
+// ⌘Q or a quit from the system: close every browser, then call -quit.
+- (void)engineWillQuit;
 @end
 
 // Owns the CEF browser process: library loading, initialization, message loop.

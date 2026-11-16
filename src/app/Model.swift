@@ -57,14 +57,23 @@ struct BrowserState: Codable {
 }
 
 enum Persistence {
-    static var fileURL: URL {
-        let support = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let directory = support.appendingPathComponent("cha", isDirectory: true)
+    // CHA_PROFILE points the whole app (state, codes, Chromium's profile) at
+    // another directory, so test runs never touch the real one.
+    static let directory: URL = {
+        let directory: URL
+        if let custom = ProcessInfo.processInfo.environment["CHA_PROFILE"] {
+            directory = URL(fileURLWithPath: custom, isDirectory: true)
+        } else {
+            let support = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            directory = support.appendingPathComponent("cha", isDirectory: true)
+        }
         try? FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("state.json")
-    }
+        return directory
+    }()
+
+    static var fileURL: URL { directory.appendingPathComponent("state.json") }
 
     static func load() -> BrowserState {
         guard let data = try? Data(contentsOf: fileURL),

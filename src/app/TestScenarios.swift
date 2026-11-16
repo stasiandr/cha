@@ -7,6 +7,18 @@ import SwiftUI
 enum TestScenarios {
     static func run(_ name: String, controller: BrowserController) {
         switch name {
+        case "bench":
+            // Launch until the first page has loaded, then quit as ⌘Q does;
+            // scripts/bench.sh times both ends from outside.
+            Diagnostics.after("first-load-end") {
+                at(0.5) { NSApp.terminate(nil) }
+            }
+            at(20) { NSApp.terminate(nil) }
+
+        case "shot":
+            at(2) { shot("look") }
+            at(3) { NSApp.terminate(nil) }
+
         case "demo":
             at(2) { controller.newTab(url: "https://news.ycombinator.com") }
             at(6) { shot("test-tabs") }
@@ -176,12 +188,35 @@ enum TestScenarios {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: body)
     }
 
-    private static func shot(_ name: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let process = Process()
-        process.launchPath = "/usr/sbin/screencapture"
-        process.arguments = ["-x", "build/\(name).png"]
-        try? process.run()
+    // A picture of the main window drawn from its views, with the active
+    // tab's page laid over the content area: works off screen and while the
+    // display sleeps, unlike screencapture.
+    static func shot(_ name: String) {
+        guard let window = NSApp.windows.first(where: { $0 is BrowserWindow }),
+            let content = window.contentView
+        else { return }
+        let bounds = content.bounds
+        guard let rep = content.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        content.cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        if let page = window.childWindows?.first(where: { $0.isVisible && !($0 is NSPanel) }),
+            let pageView = page.contentView,
+            let pageRep = pageView.bitmapImageRepForCachingDisplay(in: pageView.bounds)
+        {
+            pageView.cacheDisplay(in: pageView.bounds, to: pageRep)
+            let origin = NSPoint(
+                x: page.frame.minX - window.frame.minX, y: page.frame.minY - window.frame.minY)
+            image.lockFocus()
+            pageRep.draw(in: NSRect(origin: origin, size: page.frame.size))
+            image.unlockFocus()
+        }
+        guard let tiff = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiff),
+            let png = bitmap.representation(using: .png, properties: [:])
+        else { return }
+        try? png.write(to: URL(fileURLWithPath: "build/shots/\(name).png"))
+        NSLog("SHOT build/shots/%@.png", name)
     }
 }
 
