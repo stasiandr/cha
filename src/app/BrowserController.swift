@@ -28,6 +28,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     var window: NSWindow!
     var sidebarView: NSView?
+    private var tintView: NSView?  // The space's colour behind everything.
+    private var contentWell: NSView?  // Drops a shadow under the page card.
     lazy var sidebarWidthConstraint: NSLayoutConstraint = {
         let constraint = NSLayoutConstraint(
             item: sidebarView as Any, attribute: .width, relatedBy: .equal,
@@ -72,6 +74,25 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         background.blendingMode = .behindWindow
         window.contentView = background
 
+        // Arc washes the whole window in the space's colour and sets the page
+        // on top of it as a card; both live under the sidebar.
+        let tint = NSView(frame: background.bounds)
+        tint.layer = CAGradientLayer()  // Layer-hosting: the layer comes first.
+        tint.wantsLayer = true
+        tint.autoresizingMask = [.width, .height]
+        background.addSubview(tint)
+        tintView = tint
+
+        let well = NSView()
+        well.wantsLayer = true
+        well.layer?.cornerRadius = Self.contentCornerRadius
+        well.layer?.shadowColor = NSColor.black.cgColor
+        well.layer?.shadowOpacity = 0.22
+        well.layer?.shadowRadius = 14
+        well.layer?.shadowOffset = CGSize(width: 0, height: -3)
+        background.addSubview(well)
+        contentWell = well
+
         let sidebar = NSHostingView(rootView: SidebarView(controller: self))
         sidebarView = sidebar
         sidebar.translatesAutoresizingMaskIntoConstraints = false
@@ -86,28 +107,65 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
+        applySpaceTint()
 
         activateTab(activeSpace.activeTabID ?? activeSpace.tabs.first?.id)
     }
 
-    // Where a tab's window sits, in screen coordinates.
-    var contentScreenRect: NSRect {
+    static let contentCornerRadius: CGFloat = 12
+
+    // Where a tab's window sits, in the main window's own coordinates.
+    var contentLocalRect: NSRect {
         guard let content = window?.contentView else { return .zero }
         let inset = Self.contentInset
         let left = sidebarVisible ? sidebarWidth : inset
         let top = isFullscreen ? inset : 0  // The titlebar area stays clickable.
-        let local = NSRect(
+        return NSRect(
             x: left, y: inset,
             width: max(content.bounds.width - left - inset, 100),
             height: max(content.bounds.height - inset - top - inset, 100))
-        return window.convertToScreen(local)
+    }
+
+    // The same rectangle in screen coordinates, where a CEF window lives.
+    var contentScreenRect: NSRect {
+        guard window != nil else { return .zero }
+        return window.convertToScreen(contentLocalRect)
     }
 
     private func layoutActiveTab() {
+        layoutContentWell()
         guard let id = activeSpace.activeTabID, let tab = liveTabs[id],
             let native = tab.nativeWindow
         else { return }
         native.setFrame(contentScreenRect, display: true)
+    }
+
+    // The shadow needs a path of its own: the well itself is transparent, the
+    // page's own window covers it.
+    private func layoutContentWell() {
+        guard let well = contentWell else { return }
+        let rect = contentLocalRect
+        well.frame = rect
+        let radius = Self.contentCornerRadius
+        well.layer?.shadowPath =
+            CGPath(
+                roundedRect: CGRect(origin: .zero, size: rect.size),
+                cornerWidth: radius, cornerHeight: radius, transform: nil)
+    }
+
+    // The window picks up the active space's colour, as Arc's does.
+    func applySpaceTint() {
+        guard let gradient = tintView?.layer as? CAGradientLayer else { return }
+        let tint = activeSpace.tint.color
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.25)
+        gradient.colors = [
+            tint.withAlphaComponent(0.30).cgColor,
+            tint.withAlphaComponent(0.10).cgColor,
+        ]
+        gradient.startPoint = CGPoint(x: 0, y: 1)
+        gradient.endPoint = CGPoint(x: 1, y: 0)
+        CATransaction.commit()
     }
 
     func windowDidResize(_ notification: Notification) { layoutActiveTab() }
@@ -147,6 +205,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         else { return }
         hideTabs(of: activeSpace)
         activeSpaceID = id
+        applySpaceTint()
         let space = activeSpace
         activateTab(space.activeTabID ?? space.tabs.first?.id)
         scheduleSave()
@@ -393,6 +452,13 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             canGoForward = tab.canGoForward
             window?.title = tab.title.isEmpty ? "cha" : tab.title
         }
+    }
+
+    func tabDidFinishLoad(_ tab: ChaTab) {
+        guard let id = tabIDsByObject[ObjectIdentifier(tab)],
+            activeSpace.activeTabID == id
+        else { return }
+        autofillVerificationCode(in: tab)
     }
 
     func tab(_ tab: ChaTab, requestsNewTabWithURL url: String) {

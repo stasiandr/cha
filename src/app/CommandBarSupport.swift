@@ -91,6 +91,14 @@ extension BrowserController {
         let query = commandQuery.trimmingCharacters(in: .whitespaces)
         var results: [CommandResult] = []
 
+        // An otpauth:// link is a secret, not an address: offer to keep it.
+        if query.lowercased().hasPrefix("otpauth://"), OTPAuth.parse(query) != nil {
+            commandResults = [.addCode(uri: query)]
+            commandSelection = 0
+            DispatchQueue.main.async { [weak self] in self?.repositionCommandPanel() }
+            return
+        }
+
         if !query.isEmpty {
             let lowered = query.lowercased()
             for space in spaces {
@@ -137,6 +145,10 @@ extension BrowserController {
             openFromCommandBar(url)
         case .search(let query):
             openFromCommandBar(normalizedURL(from: query))
+        case .addCode(let uri):
+            if let entry = OTPAuth.parse(uri, site: activeHost) {
+                CodeStore.shared.add(entry)
+            }
         }
         closeCommandBar()
     }

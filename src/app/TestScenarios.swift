@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 // Development helper: the app can't be driven by scripts on this machine
 // (no Accessibility permission), so CHA_TEST=<name> replays a scenario and
@@ -108,6 +109,23 @@ enum TestScenarios {
         case "passwords":
             runPasswords(controller)
 
+        case "codes":
+            runCodes(controller)
+
+        case "sidebar":
+            // The screen may be asleep, so the sidebar is rendered offscreen
+            // instead of captured.
+            at(3) {
+                MainActor.assumeIsolated {
+                renderSidebar(controller, name: "sidebar")
+                let first = controller.activeSpace.tabs.first?.id
+                if let first { controller.togglePin(first) }
+                renderSidebar(controller, name: "sidebar-pinned")
+                if let first { controller.togglePin(first) }
+                }
+                NSApp.terminate(nil)
+            }
+
         default:
             break
         }
@@ -136,6 +154,24 @@ enum TestScenarios {
             controller.sidebarVisible ? "on" : "off")
     }
 
+    @MainActor
+    private static func renderSidebar(_ controller: BrowserController, name: String) {
+        let renderer = ImageRenderer(
+            content: SidebarView(controller: controller)
+                .frame(width: 260, height: 640))
+        renderer.scale = 2
+        guard let image = renderer.nsImage,
+            let tiff = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiff),
+            let png = bitmap.representation(using: .png, properties: [:])
+        else {
+            NSLog("SIDEBAR render failed")
+            return
+        }
+        try? png.write(to: URL(fileURLWithPath: "build/\(name).png"))
+        NSLog("SIDEBAR wrote build/%@.png", name)
+    }
+
     static func at(_ seconds: Double, _ body: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: body)
     }
@@ -146,6 +182,83 @@ enum TestScenarios {
         process.launchPath = "/usr/sbin/screencapture"
         process.arguments = ["-x", "build/\(name).png"]
         try? process.run()
+    }
+}
+
+// Verification codes: the generator against the RFC 6238 vectors, then the
+// fill into the two shapes of form that ask for a code.
+extension TestScenarios {
+    // RFC 6238 appendix B, SHA-1, secret "12345678901234567890".
+    static func checkTOTP() {
+        let entry = CodeEntry(
+            label: "test", site: "", secret: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+            digits: 8)
+        let vectors: [(Double, String)] = [
+            (59, "94287082"), (1_111_111_109, "07081804"),
+            (1_234_567_890, "89005924"), (2_000_000_000, "69279037"),
+            (20_000_000_000, "65353130"),
+        ]
+        for (time, expected) in vectors {
+            let got = entry.code(at: Date(timeIntervalSince1970: time)) ?? "-"
+            NSLog(
+                "CODES totp t=%.0f expected=%@ got=%@ %@", time, expected, got,
+                got == expected ? "ok" : "FAIL")
+        }
+        let parsed = OTPAuth.parse(
+            "otpauth://totp/Keycloak:stas?secret=GEZDGNBVGY3TQOJQ&issuer=Keycloak&digits=6",
+            site: "auth.example.com")
+        NSLog(
+            "CODES parse label=%@ site=%@ digits=%d code=%@",
+            parsed?.label ?? "-", parsed?.site ?? "-", parsed?.digits ?? 0,
+            parsed?.code ?? "-")
+        let rows = parseCSV(
+            "Title,URL,Username,Password,Notes,OTPAuth\n"
+                + "Keycloak,https://auth.example.com/,stas,hunter2,,"
+                + "otpauth://totp/Keycloak:stas?secret=GEZDGNBVGY3TQOJQ\n")
+        NSLog("CODES csv rows=%d columns=%d", rows.count, rows.last?.count ?? 0)
+    }
+
+    // A Keycloak-style single field, then a row of one-character boxes.
+    static let otpPage =
+        "data:text/html,<form><input id=otp name=otp autocomplete=off></form>"
+    static let boxesPage =
+        "data:text/html,<form>"
+            + "<input maxlength=1 autocomplete=one-time-code><input maxlength=1>"
+            + "<input maxlength=1><input maxlength=1><input maxlength=1>"
+            + "<input maxlength=1></form>"
+
+    static func runCodes(_ controller: BrowserController) {
+        at(1) { checkTOTP() }
+        let entry = CodeStore.shared.add(
+            CodeEntry(
+                label: "Test code", site: "", secret: "GEZDGNBVGY3TQOJQ"))
+        at(2) { controller.newTab(url: otpPage) }
+        at(5) { controller.fill(entry) }
+        at(6) {
+            controller.activeTab?.executeJavaScript(
+                "document.title = 'SINGLE [' + document.getElementById('otp').value + ']'")
+        }
+        at(8) {
+            NSLog(
+                "CODES fill %@ expected=%@", controller.activeTab?.title ?? "-",
+                entry.code ?? "-")
+            controller.navigate(to: boxesPage)
+        }
+        at(11) { controller.fill(entry) }
+        at(12) {
+            controller.activeTab?.executeJavaScript(
+                """
+                document.title = 'BOXES [' + Array.from(
+                  document.querySelectorAll('input')).map(i => i.value).join('') + ']';
+                """)
+        }
+        at(14) {
+            NSLog(
+                "CODES boxes %@ expected=%@", controller.activeTab?.title ?? "-",
+                entry.code ?? "-")
+            CodeStore.shared.remove(entry.id)
+            NSApp.terminate(nil)
+        }
     }
 }
 

@@ -20,6 +20,7 @@
 - (void)cefWindowDestroyed;
 - (void)cefBrowserClosed;
 - (void)cefRequestsNewTab:(NSString*)url;
+- (void)cefDidFinishLoad;
 - (void)cefChanged;
 @end
 
@@ -129,6 +130,14 @@ class TabHost : public CefClient,
     tab.canGoBack = canGoBack;
     tab.canGoForward = canGoForward;
     [tab cefChanged];
+  }
+
+  void OnLoadEnd(CefRefPtr<CefBrowser>,
+                 CefRefPtr<CefFrame> frame,
+                 int) override {
+    if (frame->IsMain()) {
+      [tab_ cefDidFinishLoad];
+    }
   }
 
   // CefLifeSpanHandler
@@ -294,7 +303,7 @@ CefRect ScreenRectToCef(NSRect frame) {
   native.backgroundColor = NSColor.clearColor;
   native.opaque = NO;
   native.contentView.wantsLayer = YES;
-  native.contentView.layer.cornerRadius = 10;
+  native.contentView.layer.cornerRadius = 12;
   native.contentView.layer.masksToBounds = YES;
   [self.delegate tabDidBecomeReady:self];
 }
@@ -313,6 +322,10 @@ CefRect ScreenRectToCef(NSRect frame) {
 
 - (void)cefChanged {
   [self.delegate tabDidUpdate:self];
+}
+
+- (void)cefDidFinishLoad {
+  [self.delegate tabDidFinishLoad:self];
 }
 
 @end

@@ -32,6 +32,18 @@ enum MainMenu {
         file.add("Passwords…", "", target, #selector(MenuTarget.passwords), [])
         file.add(
             "Import Passwords…", "", target, #selector(MenuTarget.importPasswords), [])
+        file.addItem(.separator())
+        file.add(
+            "Fill Verification Code", "v", target, #selector(MenuTarget.fillCode),
+            [.command, .shift])
+        // The submenu rebuilds itself when it opens, so it shows live codes.
+        let codes = NSMenu(title: "Verification Codes")
+        codes.delegate = CodesMenuDelegate.shared
+        CodesMenuDelegate.shared.controller = controller
+        let codesItem = NSMenuItem(
+            title: "Verification Codes", action: nil, keyEquivalent: "")
+        codesItem.submenu = codes
+        file.addItem(codesItem)
         bar.addItem(submenu: file, title: "File")
 
         let edit = NSMenu(title: "Edit")
@@ -123,6 +135,29 @@ final class MenuTarget: NSObject {
     }
     @objc func importPasswords() {
         controller?.newTab(url: "chrome://password-manager/settings")
+    }
+
+    // Verification codes: the app keeps the TOTP secrets and types the code.
+    @objc func fillCode() { controller?.fillVerificationCode() }
+    @objc func addCode() { controller?.addVerificationCode() }
+    @objc func importCodes() { controller?.importVerificationCodes() }
+    @objc func fillCodeEntry(_ sender: NSMenuItem) {
+        guard let entry = entry(for: sender) else { return }
+        controller?.fill(entry)
+    }
+    @objc func copyCodeEntry(_ sender: NSMenuItem) {
+        guard let code = entry(for: sender)?.code else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+    }
+    @objc func removeCodeEntry(_ sender: NSMenuItem) {
+        guard let entry = entry(for: sender) else { return }
+        CodeStore.shared.remove(entry.id)
+    }
+
+    private func entry(for item: NSMenuItem) -> CodeEntry? {
+        guard let id = item.representedObject as? UUID else { return nil }
+        return CodeStore.shared.entries.first { $0.id == id }
     }
     @objc func toggleSidebar() { controller?.toggleSidebar() }
     @objc func reload() { controller?.reload() }

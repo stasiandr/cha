@@ -9,6 +9,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)tabDidBecomeReady:(ChaTab*)tab;
 // Title, URL, loading state or favicon changed.
 - (void)tabDidUpdate:(ChaTab*)tab;
+// The main frame finished loading a page.
+- (void)tabDidFinishLoad:(ChaTab*)tab;
 // A link asked for a new tab or window.
 - (void)tab:(ChaTab*)tab requestsNewTabWithURL:(NSString*)url;
 // The web content closed itself.
