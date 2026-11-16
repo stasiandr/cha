@@ -62,6 +62,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     let find = FindModel()
     var commandMode: CommandMode = .newTab
     var commandKeyMonitor: Any?
+    var revealMonitor: Any?
+    var topReveal = false
     var swipeMonitor: Any?
     var swipe = SwipeTracker()
     private var appearanceObservation: NSKeyValueObservation?
@@ -177,6 +179,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Diagnostics.mark("window")
         applySpaceTint()
         installSwipeMonitor()
+        installRevealMonitor()
+        window.acceptsMouseMovedEvents = true
         appearanceObservation = window.observe(\.effectiveAppearance) { [weak self] _, _ in
             DispatchQueue.main.async { self?.applySpaceTint(animated: false) }
         }
@@ -193,10 +197,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard let content = window?.contentView else { return .zero }
         let inset = isFullscreen ? 0 : Self.contentInset
         let left = sidebarVisible ? sidebarWidth : inset
+        let top = isFullscreen && topReveal ? Self.revealHeight : inset
         return NSRect(
             x: left, y: inset,
             width: max(content.bounds.width - left - inset, 100),
-            height: max(content.bounds.height - 2 * inset, 100))
+            height: max(content.bounds.height - inset - top, 100))
     }
 
     var pageCornerRadius: CGFloat { isFullscreen ? 0 : Self.contentCornerRadius }
@@ -214,7 +219,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         return window.convertToScreen(contentLocalRect)
     }
 
-    private func layoutActiveTab() {
+    func layoutActiveTab() {
         layoutContentWell()
         repositionFindBar()
         guard let id = activeSpace.activeTabID, let tab = liveTabs[id],
@@ -271,9 +276,54 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     var browserWindow: BrowserWindow? { window as? BrowserWindow }
 
-    // The traffic lights go in full screen and with the sidebar hidden.
+    // The traffic lights go with the sidebar in a window. In full screen
+    // they stay: macOS shows them with the menu bar when the pointer reaches
+    // the top, and the page makes room for them then (topReveal).
     func updateTrafficLights() {
-        browserWindow?.trafficLightsHidden = isFullscreen || !sidebarVisible
+        browserWindow?.trafficLightsHidden = !isFullscreen && !sidebarVisible
+    }
+
+    // MARK: Full screen: making room for the menu bar
+
+    static let revealHeight: CGFloat = 32
+
+    // In full screen the page runs to the top edge, over the strip where
+    // macOS slides in the window's buttons. When the pointer goes up there
+    // the page steps down, and back up once the pointer leaves.
+    func installRevealMonitor() {
+        guard revealMonitor == nil else { return }
+        revealMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) {
+            [weak self] event in
+            self?.trackReveal()
+            return event
+        }
+    }
+
+    func trackReveal() {
+        guard isFullscreen, let screen = window?.screen?.frame else {
+            if topReveal { setTopReveal(false) }
+            return
+        }
+        let y = NSEvent.mouseLocation.y
+        if !topReveal, y >= screen.maxY - 2 {
+            setTopReveal(true)
+        } else if topReveal, y < screen.maxY - Self.revealHeight - 40 {
+            setTopReveal(false)
+        }
+    }
+
+    func setTopReveal(_ reveal: Bool) {
+        guard reveal != topReveal else { return }
+        topReveal = reveal
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            if let id = activeTabID, let native = liveTabs[id]?.nativeWindow {
+                native.animator().setFrame(contentScreenRect, display: true)
+            }
+        }
+        layoutContentWell()
+        repositionFindBar()
     }
 
     func windowWillEnterFullScreen(_ notification: Notification) {
@@ -293,8 +343,64 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         applyPageShape()
     }
 
+    // MARK: Full screen, animated by us
+
+    // macOS animates only the main window; the page is a window of its own
+    // and used to jump into place afterwards, flashing. With a custom
+    // animation the window grows to the screen in 250 ms and every step lays
+    // the page out again (windowDidResize), so they move as one.
+    static let fullscreenDuration: TimeInterval = 0.25
+    private static var frameBeforeFullscreen: [ObjectIdentifier: NSRect] = [:]
+
+    func customWindowsToEnterFullScreen(for window: NSWindow) -> [NSWindow]? { [window] }
+    func customWindowsToExitFullScreen(for window: NSWindow) -> [NSWindow]? { [window] }
+
+    func window(
+        _ window: NSWindow, startCustomAnimationToEnterFullScreenWithDuration duration: TimeInterval
+    ) {
+        Self.frameBeforeFullscreen[ObjectIdentifier(window)] = window.frame
+        let screen = (window.screen ?? NSScreen.main ?? NSScreen.screens[0]).frame
+        let level = window.level
+        window.level = .mainMenu + 1  // Above the menu bar while it grows.
+        window.styleMask.insert(.fullScreen)
+        isFullscreen = true
+        applyPageShape()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fullscreenDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(screen, display: true)
+        } completionHandler: { [weak self] in
+            window.level = level
+            self?.layoutActiveTab()
+        }
+    }
+
+    func window(
+        _ window: NSWindow, startCustomAnimationToExitFullScreenWithDuration duration: TimeInterval
+    ) {
+        let target = Self.frameBeforeFullscreen[ObjectIdentifier(window)] ?? window.frame
+        window.styleMask.remove(.fullScreen)
+        isFullscreen = false
+        applyPageShape()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fullscreenDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(target, display: true)
+        } completionHandler: { [weak self] in
+            self?.layoutActiveTab()
+            self?.browserWindow?.placeTrafficLights()
+        }
+    }
+
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        isFullscreen = false
+        applyPageShape()
+        layoutActiveTab()
+    }
+
     func windowDidExitFullScreen(_ notification: Notification) {
         isFullscreen = false
+        topReveal = false
         updateTrafficLights()
         applyPageShape()
         layoutActiveTab()
@@ -309,7 +415,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // MARK: - Quitting
 
     private(set) var isQuitting = false
-    private var pendingCloses = 0
+    var pendingCloses = 0
     private var quitCompletion: (() -> Void)?
 
     // Quitting looks instant: the state is saved and every window disappears
@@ -331,8 +437,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Diagnostics.mark("windows-hidden")
 
         quitCompletion = completion
-        pendingCloses = liveTabs.count
-        let tabs = Array(liveTabs.values)
+        let little = LittleWindowController.open
+        for item in little { item.window.orderOut(nil) }
+        pendingCloses = liveTabs.count + little.count
+        let tabs = Array(liveTabs.values) + little.compactMap(\.tab)
         if tabs.isEmpty { finishQuit() }
         for tab in tabs { tab.close() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
@@ -340,7 +448,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         }
     }
 
-    private func finishQuit() {
+    func finishQuit() {
         guard let completion = quitCompletion else { return }
         quitCompletion = nil
         Diagnostics.mark("browsers-closed")
@@ -374,7 +482,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func activateTab(_ id: UUID?, transition: PageTransition = .fade) {
-        if id != activeTabID { closeFindBar() }
+        if id != activeTabID {
+            closeFindBar()
+            pictureInPictureForSwitch(from: activeTabID, to: id)
+        }
         guard let id, let data = tabData(id) else {
             hideAllTabs()
             addressText = ""
@@ -402,12 +513,23 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func liveTab(_ id: UUID, url: String) -> ChaTab {
         if let existing = liveTabs[id] { return existing }
         let tab = ChaTab(url: url, screenFrame: contentScreenRect)
+        register(tab, as: id)
+        Diagnostics.mark("first-tab-created")
+        return tab
+    }
+
+    func register(_ tab: ChaTab, as id: UUID) {
         tab.delegate = self
         tab.setCornerRadius(pageCornerRadius)
         liveTabs[id] = tab
         tabIDsByObject[ObjectIdentifier(tab)] = id
-        Diagnostics.mark("first-tab-created")
-        return tab
+    }
+
+    // A little window's page closed while quitting counts towards the wait.
+    func littleTabClosed() {
+        guard isQuitting else { return }
+        pendingCloses -= 1
+        if pendingCloses <= 0 { finishQuit() }
     }
 
     // How the page changes: never a cut, never a show. A tab crossfades in

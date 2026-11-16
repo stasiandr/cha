@@ -80,6 +80,43 @@ enum TestScenarios {
             at(7) { listWindows("after IDC_FIND") }
             at(8) { NSApp.terminate(nil) }
 
+        case "pip":
+            // Picture in picture without opening the floating window (it
+            // would land on the screen in use): the user-gesture path, and
+            // which video the scripts pick.
+            let page = """
+                data:text/html,<title>pip</title><canvas id=c width=64 height=36></canvas>
+                <video id=small muted width=40></video><video id=big muted width=320></video>
+                <script>
+                const c = document.getElementById('c'), x = c.getContext('2d');
+                setInterval(() => { x.fillStyle = 'rgb(' + Math.floor(Math.random()*255) + ',90,140)'; x.fillRect(0,0,64,36); }, 50);
+                for (const id of ['small', 'big']) {
+                  const v = document.getElementById(id); v.srcObject = c.captureStream(20); }
+                document.getElementById('big').play();
+                </script>
+                """
+            at(1) { controller.newTab(url: page) }
+            at(4) {
+                controller.activeTab?.executeJavaScript(
+                    withUserGesture: "document.title = 'gesture ' + navigator.userActivation.isActive")
+            }
+            at(5) {
+                let ok = controller.activeTab?.title == "gesture true"
+                NSLog("CHECK %@ scripts run with a user gesture (%@)", ok ? "ok  " : "FAIL", controller.activeTab?.title ?? "-")
+                if ok { SpaceChecks.passed += 1 } else { SpaceChecks.failed += 1 }
+                controller.activeTab?.executeJavaScript(
+                    "(() => { \(PictureInPicture.pickVideo) document.title = 'picked ' + (video ? video.id : 'none'); })()")
+            }
+            at(6) {
+                let ok = controller.activeTab?.title == "picked big"
+                NSLog("CHECK %@ picks the playing video (%@)", ok ? "ok  " : "FAIL", controller.activeTab?.title ?? "-")
+                if ok { SpaceChecks.passed += 1 } else { SpaceChecks.failed += 1 }
+            }
+            at(6.5) {
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "openurl":
             // A link from another app, as the GetURL Apple event delivers it.
             at(1.5) {
@@ -92,11 +129,40 @@ enum TestScenarios {
                     forKeyword: keyDirectObject)
                 URLOpener.shared.handleGetURL(event, withReplyEvent: NSAppleEventDescriptor.null())
             }
-            at(3) {
-                let ok = controller.activeTab?.currentURL.contains("From outside") == true
-                NSLog("CHECK %@ link from another app opens a tab", ok ? "ok  " : "FAIL")
-                NSLog("CHECKS passed=%d failed=%d", ok ? 1 : 0, ok ? 0 : 1)
-                SpaceChecks.failed += ok ? 0 : 1
+            var tabsBefore = 0
+            at(1.4) { tabsBefore = controller.activeSpace.tabs.count }
+            at(3.5) {
+                let little = LittleWindowController.open.first
+                SpaceChecks.check("a link from another app opens a little window", little != nil)
+                SpaceChecks.check(
+                    "the page loads in it", little?.tab.currentURL.contains("From outside") == true,
+                    little?.tab.currentURL ?? "-")
+                SpaceChecks.check(
+                    "its page sits under the bar",
+                    little.map { l in
+                        let page = l.tab.nativeWindow?.frame ?? .zero
+                        return page.maxY <= l.window.frame.maxY - LittleWindowController.barHeight + 1
+                            && page.minX >= l.window.frame.minX
+                    } ?? false)
+                SpaceChecks.check("the main window is left as it was", controller.activeSpace.tabs.count == tabsBefore)
+                little?.openInMain()
+            }
+            at(4.5) {
+                SpaceChecks.check("Open in cha closes the little window", LittleWindowController.open.isEmpty)
+                SpaceChecks.check(
+                    "and the page is a tab of the main window, same browser",
+                    controller.activeTab?.currentURL.contains("From outside") == true
+                        && controller.activeSpace.tabs.count == tabsBefore + 1)
+                controller.openLittleWindow("data:text/html,<title>Throwaway</title>")
+            }
+            at(6) {
+                let little = LittleWindowController.open.first
+                little?.close()
+            }
+            at(7) {
+                SpaceChecks.check("closing it closes the page too", LittleWindowController.open.isEmpty)
+                SpaceChecks.check("and leaves the main window alone", controller.activeSpace.tabs.count == tabsBefore + 1)
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }
 

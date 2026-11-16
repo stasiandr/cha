@@ -61,12 +61,10 @@ final class URLOpener: NSObject {
         guard let controller, controller.window != nil, !pending.isEmpty else { return }
         let urls = pending
         pending = []
-        for url in urls { controller.newTab(url: url) }
+        // Like Little Arc: each link opens in a little window over the app
+        // it came from; "Open in cha" moves it into the main window.
+        for url in urls { controller.openLittleWindow(url) }
         NSLog("OPENED %@", urls.joined(separator: " "))
-        if !Diagnostics.quiet {
-            NSApp.activate(ignoringOtherApps: true)
-            controller.window.makeKeyAndOrderFront(nil)
-        }
     }
 
     // MARK: Default browser

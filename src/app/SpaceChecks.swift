@@ -112,6 +112,7 @@ enum SpaceChecks {
         guard let content = c.window.contentView else { return }
         c.isFullscreen = true
         c.applyPageShape()
+        c.updateTrafficLights()
         let full = c.contentLocalRect
         check(
             "full screen: the page runs to the edges",
@@ -119,8 +120,16 @@ enum SpaceChecks {
                 && full.maxY == content.bounds.height,
             NSStringFromRect(full))
         check("full screen: no corners", c.activeTab?.nativeWindow?.contentView?.layer?.cornerRadius == 0)
+        check("full screen: the window's buttons are kept", c.browserWindow?.standardWindowButton(.closeButton)?.isHidden == false)
+        c.topReveal = true
+        let revealed = c.contentLocalRect
+        check(
+            "full screen: the page makes room for the menu bar's strip",
+            revealed.maxY == content.bounds.height - BrowserController.revealHeight, NSStringFromRect(revealed))
+        c.topReveal = false
         c.isFullscreen = false
         c.applyPageShape()
+        c.updateTrafficLights()
         let card = c.contentLocalRect
         check(
             "window: the page is a card with a margin",

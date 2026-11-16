@@ -44,6 +44,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)stopLoading;
 - (void)focus;
 - (void)executeJavaScript:(NSString*)script;
+// Runs |script| as if the user had just clicked the page (DevTools'
+// Runtime.evaluate with userGesture), for APIs such as
+// requestPictureInPicture that need one.
+- (void)executeJavaScriptWithUserGesture:(NSString*)script;
 // Synthesizes a real user click in the page, at view coordinates.
 - (void)clickAtX:(int)x y:(int)y;
 - (void)close;

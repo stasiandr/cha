@@ -65,11 +65,18 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/sp
   echo "spaces FAILED (exit $code)"; failed=$((failed + 1))
 fi
 
-step "links from other apps"
+step "links from other apps (little window)"
 run_scenario openurl 30; code=$?
-grep -E 'CHECK ' build/check/openurl.log | sed 's/^.*cha\[[^]]*\] //'
-if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=1 failed=0' build/check/openurl.log; then
+grep -E 'CHECK |CHECKS' build/check/openurl.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/openurl.log; then
   echo "links FAILED"; failed=$((failed + 1))
+fi
+
+step "picture in picture (plumbing; the floating window itself is not opened)"
+run_scenario pip 30; code=$?
+grep -E 'CHECK ' build/check/pip.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=2 failed=0' build/check/pip.log; then
+  echo "pip FAILED"; failed=$((failed + 1))
 fi
 
 if [ "$mode" = window ]; then

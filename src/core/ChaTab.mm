@@ -289,6 +289,17 @@ CefRect ScreenRectToCef(NSRect frame) {
   }
 }
 
+- (void)executeJavaScriptWithUserGesture:(NSString*)script {
+  auto browser = _host ? _host->browser() : nullptr;
+  if (!browser) {
+    return;
+  }
+  CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+  params->SetString("expression", script.UTF8String);
+  params->SetBool("userGesture", true);
+  browser->GetHost()->ExecuteDevToolsMethod(0, "Runtime.evaluate", params);
+}
+
 - (void)clickAtX:(int)x y:(int)y {
   auto browser = _host ? _host->browser() : nullptr;
   if (!browser) {

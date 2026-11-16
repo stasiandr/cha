@@ -79,6 +79,7 @@ extension BrowserController {
 
     // The switch itself, once the page has slid over.
     func commitSpace(_ id: UUID) {
+        let leaving = activeTabID
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -91,6 +92,7 @@ extension BrowserController {
         let space = activeSpace
         // The page already slid in with the sidebar; a switch without the
         // slide (⌘ keys while hidden, a check) just fades.
+        pictureInPictureForSwitch(from: leaving, to: space.activeTabID)
         activateTab(space.activeTabID, transition: .fade)
         scheduleSave()
         Diagnostics.mark("space-switched")

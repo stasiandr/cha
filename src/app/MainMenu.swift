@@ -31,6 +31,10 @@ enum MainMenu {
         let file = NSMenu(title: "File")
         file.add("New Tab", "t", target, #selector(MenuTarget.newTab))
         file.add("Close Tab", "w", target, #selector(MenuTarget.closeTab))
+        file.add(
+            "New Little Window", "n", target, #selector(MenuTarget.newLittleWindow),
+            [.command, .option])
+        file.add("Open in Main Window", "o", target, #selector(MenuTarget.openInMainWindow))
         file.add("Empty Tab", "t", target, #selector(MenuTarget.emptyTab), [.command, .shift])
         file.addItem(.separator())
         file.addItem(.separator())
@@ -76,6 +80,10 @@ enum MainMenu {
             action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullscreen.keyEquivalentModifierMask = [.command, .control]
         view.addItem(fullscreen)
+        view.addItem(.separator())
+        view.add(
+            "Picture in Picture", "p", target, #selector(MenuTarget.pictureInPicture),
+            [.command, .option])
         bar.addItem(submenu: view, title: "View")
 
         // Tabs: pin, favourite, copy, clear — the tab-level keys Arc has.
@@ -181,7 +189,16 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     var controller: BrowserController?
 
     @objc func newTab() { controller?.openCommandBar(mode: .newTab) }
-    @objc func closeTab() { controller?.closeActiveTab() }
+    // In a little window ⌘W closes the window, not a tab of the main one.
+    @objc func closeTab() {
+        if let little = LittleWindowController.key {
+            little.close()
+        } else {
+            controller?.closeActiveTab()
+        }
+    }
+    @objc func newLittleWindow() { controller?.openLittleWindow("about:blank") }
+    @objc func openInMainWindow() { LittleWindowController.key?.openInMain() }
     @objc func emptyTab() { controller?.newTab() }
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
         controller?.activateTabAtIndex(sender.tag)
@@ -209,6 +226,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     }
     @objc func copyLink() { controller?.copyLink() }
     @objc func makeDefaultBrowser() { URLOpener.makeDefault() }
+    @objc func pictureInPicture() { controller?.togglePictureInPicture() }
     @objc func findInPage() { controller?.openFindBar() }
     @objc func findNext() { controller?.findNext(forward: true) }
     @objc func findPrevious() { controller?.findNext(forward: false) }
