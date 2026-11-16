@@ -102,15 +102,22 @@ the close button on that row only, a tab dragged onto a space icon moves
 there, dragging reorders tabs, dragging space icons reorders spaces, the
 colour panel recolours the space.
 
-### Launch and quit against Arc — not measured yet
+### Launch and quit against Arc
 
-`scripts/launchbench.swift` times any app the same way from outside
-(LaunchServices launch → first window on screen; quit Apple event →
-windows gone → process gone). Measuring Arc means quitting and reopening
-it several times, so it waits for a time the Mac is free:
+Measured the same way for both (`scripts/compare-arc.sh`, run by itself
+when the Mac was idle, 2026-11-17 00:46): launched through LaunchServices
+until the first window is on screen, then the quit Apple event until the
+windows are gone and the process has ended. Medians of 5, ms:
 
-    build/launchbench /Applications/Arc.app 5
-    build/launchbench build/cha.app 5 CHA_PROFILE=$PWD/build/bench-profile The swipe is checked through synthesized
+| | cha | Arc 1.173.1 |
+|---|---|---|
+| launch → window on screen | 318 | 2115 |
+| quit → windows gone | 90 | 195 |
+| quit → process gone | 135 | 214 |
+
+cha opens its window ~6.6× sooner and quits ~1.6× sooner. (Arc restored
+its own profile's tabs; cha a 3-space, 15-tab test profile. Neither number
+includes loading the page itself.) The swipe is checked through synthesized
 scroll events fed to the handler; the direction for natural scrolling
 follows `isDirectionInvertedFromDevice`.
 
