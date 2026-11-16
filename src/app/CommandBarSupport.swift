@@ -101,6 +101,18 @@ extension BrowserController {
 
         if !query.isEmpty {
             let lowered = query.lowercased()
+            for space in spaces where space.id != activeSpaceID
+                && space.name.lowercased().hasPrefix(lowered)
+            {
+                results.append(.space(id: space.id, name: space.name))
+            }
+            for tab in favorites
+            where tab.displayTitle.lowercased().contains(lowered)
+                || tab.url.lowercased().contains(lowered)
+            {
+                results.append(
+                    .tab(spaceID: activeSpaceID, tabID: tab.id, title: tab.displayTitle, url: tab.url))
+            }
             for space in spaces {
                 for tab in space.tabs
                 where tab.displayTitle.lowercased().contains(lowered)
@@ -112,7 +124,13 @@ extension BrowserController {
                             title: tab.displayTitle, url: tab.url))
                 }
             }
-            results = Array(results.prefix(5))
+            let archived = archive.filter {
+                $0.title.lowercased().contains(lowered) || $0.url.lowercased().contains(lowered)
+            }
+            for item in archived.prefix(2) {
+                results.append(.archived(id: item.id, title: item.title, url: item.url))
+            }
+            results = Array(results.prefix(6))
 
             let target = normalizedURL(from: query)
             if target.contains("google.com/search") {
@@ -145,6 +163,10 @@ extension BrowserController {
             openFromCommandBar(url)
         case .search(let query):
             openFromCommandBar(normalizedURL(from: query))
+        case .space(let id, _):
+            selectSpace(id)
+        case .archived(let id, _, _):
+            restoreArchived(id)
         case .addCode(let uri):
             if let entry = OTPAuth.parse(uri, site: activeHost) {
                 CodeStore.shared.add(entry)

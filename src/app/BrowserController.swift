@@ -9,6 +9,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 {
     @Published var spaces: [SpaceData]
     @Published var activeSpaceID: UUID
+    // Favourites are shared by every space, as in Arc.
+    @Published var favorites: [TabData]
+    @Published var archive: [ArchivedTab]
     @Published var favicons: [UUID: NSImage] = [:]
     @Published var loadingTabs: Set<UUID> = []
     @Published var sidebarVisible = true
@@ -21,10 +24,26 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var canGoBack = false
     @Published var canGoForward = false
 
+    // What the sidebar shows in place of the space's tabs.
+    enum SidebarPage: Equatable {
+        case tabs
+        case editSpace(UUID, isNew: Bool)
+        case archive
+    }
+    @Published var sidebarPage: SidebarPage = .tabs
+
+    // Space paging: how far the space's page is dragged sideways (points,
+    // positive = towards the previous space) and which space sits next to it.
+    @Published var pageOffset: CGFloat = 0
+    @Published var pageNeighbor: (left: UUID?, right: UUID?) = (nil, nil)
+    var pageAnimating = false
+
     @Published var sidebarWidth: CGFloat = 250
     static let minSidebarWidth: CGFloat = 180
     static let maxSidebarWidth: CGFloat = 420
     static let contentInset: CGFloat = 8
+    // Unpinned tabs left alone this long go to the archive at launch.
+    static let archiveAfter: TimeInterval = 12 * 3600
 
     var window: NSWindow!
     var sidebarView: NSView?
@@ -40,16 +59,25 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var commandPanel: CommandPanel?
     var commandMode: CommandMode = .newTab
     var commandKeyMonitor: Any?
-    private var liveTabs: [UUID: ChaTab] = [:]
+    var swipeMonitor: Any?
+    var swipe = SwipeTracker()
+    private var appearanceObservation: NSKeyValueObservation?
+    private(set) var liveTabs: [UUID: ChaTab] = [:]
     private var tabIDsByObject: [ObjectIdentifier: UUID] = [:]
     private var saveScheduled = false
 
     override init() {
         let state = Persistence.load()
         spaces = state.spaces
-        activeSpaceID = state.activeSpaceID ?? state.spaces[0].id
+        favorites = state.favorites ?? []
+        archive = state.archive ?? []
+        let saved = state.activeSpaceID
+        activeSpaceID =
+            state.spaces.contains { $0.id == saved } ? saved! : state.spaces[0].id
         sidebarWidth = CGFloat(state.sidebarWidth ?? 250)
         super.init()
+        archiveStaleTabs()
+        loadSavedFavicons()
     }
 
     // MARK: - Window
@@ -68,10 +96,12 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.minSize = NSSize(width: 700, height: 420)
+        window.setFrameAutosaveName("cha.main")
 
         let background = NSVisualEffectView()
         background.material = .sidebar
         background.blendingMode = .behindWindow
+        background.state = .followsWindowActiveState
         window.contentView = background
 
         // Arc washes the whole window in the space's colour and sets the page
@@ -108,12 +138,16 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             window.setFrameOrigin(Diagnostics.offscreenOrigin)
             window.orderFront(nil)
         } else {
-            window.center()
+            if window.frame.origin == .zero { window.center() }
             window.makeKeyAndOrderFront(nil)
         }
         self.window = window
         Diagnostics.mark("window")
         applySpaceTint()
+        installSwipeMonitor()
+        appearanceObservation = window.observe(\.effectiveAppearance) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.applySpaceTint(animated: false) }
+        }
 
         activateTab(activeSpace.activeTabID ?? activeSpace.tabs.first?.id)
     }
@@ -159,15 +193,26 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
                 cornerWidth: radius, cornerHeight: radius, transform: nil)
     }
 
-    // The window picks up the active space's colour, as Arc's does.
-    func applySpaceTint() {
+    var isDark: Bool {
+        (window?.effectiveAppearance ?? NSApp.effectiveAppearance)
+            .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
+    // The window wears the active space's colour, as Arc's does; during a
+    // swipe it is a blend of the two spaces.
+    func applySpaceTint(_ theme: SpaceTheme? = nil, animated: Bool = true) {
         guard let gradient = tintView?.layer as? CAGradientLayer else { return }
-        let tint = activeSpace.tint.color
+        let tint = (theme ?? activeSpace.theme).color
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.25)
+        if animated {
+            CATransaction.setAnimationDuration(0.25)
+        } else {
+            CATransaction.setDisableActions(true)
+        }
+        let (top, bottom): (CGFloat, CGFloat) = isDark ? (0.42, 0.20) : (0.50, 0.26)
         gradient.colors = [
-            tint.withAlphaComponent(0.30).cgColor,
-            tint.withAlphaComponent(0.10).cgColor,
+            tint.withAlphaComponent(top).cgColor,
+            tint.withAlphaComponent(bottom).cgColor,
         ]
         gradient.startPoint = CGPoint(x: 0, y: 1)
         gradient.endPoint = CGPoint(x: 1, y: 0)
@@ -195,7 +240,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     // MARK: - Quitting
 
-    private var isQuitting = false
+    private(set) var isQuitting = false
     private var pendingCloses = 0
     private var quitCompletion: (() -> Void)?
 
@@ -234,7 +279,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         completion()
     }
 
-    // MARK: - Spaces
+    // MARK: - Tabs
 
     var activeSpace: SpaceData {
         get { spaces.first { $0.id == activeSpaceID } ?? spaces[0] }
@@ -246,69 +291,32 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         }
     }
 
-    func selectSpace(_ id: UUID) {
-        guard id != activeSpaceID, spaces.contains(where: { $0.id == id })
-        else { return }
-        hideTabs(of: activeSpace)
-        activeSpaceID = id
-        applySpaceTint()
-        let space = activeSpace
-        activateTab(space.activeTabID ?? space.tabs.first?.id)
-        scheduleSave()
-    }
+    var activeTabID: UUID? { activeSpace.activeTabID }
 
-    func cycleSpace(by delta: Int) {
-        guard spaces.count > 1,
-            let index = spaces.firstIndex(where: { $0.id == activeSpaceID })
-        else { return }
-        let next = (index + delta + spaces.count) % spaces.count
-        selectSpace(spaces[next].id)
-    }
-
-    func addSpace() {
-        let palette = TintColor.allCases
-        let symbols = ["person", "briefcase", "book", "gamecontroller", "cart"]
-        let index = spaces.count
-        var space = SpaceData(
-            name: "Space \(index + 1)", symbol: symbols[index % symbols.count],
-            tint: palette[index % palette.count])
-        let tab = TabData(url: "https://example.com")
-        space.tabs = [tab]
-        space.activeTabID = tab.id
-        spaces.append(space)
-        selectSpace(space.id)
-    }
-
-    func renameSpace(_ id: UUID, to name: String) {
-        guard let index = spaces.firstIndex(where: { $0.id == id }) else { return }
-        spaces[index].name = name
-        scheduleSave()
-    }
-
-    private func hideTabs(of space: SpaceData) {
-        for tab in space.tabs {
-            guard let native = liveTabs[tab.id]?.nativeWindow else { continue }
-            if native.parent != nil { window.removeChildWindow(native) }
-            native.orderOut(nil)
-        }
-    }
-
-    // MARK: - Tabs
-
-    func newTab(url: String = "https://example.com", pinned: Bool = false) {
+    // New tabs go to the top of today's list, as in Arc.
+    func newTab(url: String = "about:blank", pinned: Bool = false) {
         var space = activeSpace
         let tab = TabData(url: url, isPinned: pinned)
-        space.tabs.append(tab)
+        let firstUnpinned = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
+        space.tabs.insert(tab, at: firstUnpinned)
         space.activeTabID = tab.id
         activeSpace = space
         activateTab(tab.id)
+        if url == "about:blank" { focusAddressBar() }
     }
 
     func activateTab(_ id: UUID?) {
-        guard let id, let data = tabData(id) else { return }
+        guard let id, let data = tabData(id) else {
+            hideAllTabs()
+            addressText = ""
+            canGoBack = false
+            canGoForward = false
+            return
+        }
         var space = activeSpace
         space.activeTabID = id
         activeSpace = space
+        update(tabID: id) { $0.lastActive = Date() }
         addressText = data.url
 
         // Tabs restored from disk have no browser yet; create one on demand.
@@ -325,7 +333,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         showOnly(tabID: id)
         canGoBack = tab.canGoBack
         canGoForward = tab.canGoForward
-        if tab.nativeWindow != nil { tab.focus() }
+        window?.title = data.displayTitle
+        if tab.nativeWindow != nil, !Diagnostics.headless { tab.focus() }
     }
 
     func showOnly(tabID: UUID) {
@@ -336,44 +345,77 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
                     window.addChildWindow(native, ordered: .above)
                 }
                 native.setFrame(contentScreenRect, display: true)
-                native.makeKeyAndOrderFront(nil)
-            } else if native.parent != nil {
-                window.removeChildWindow(native)
+                if Diagnostics.headless {
+                    native.orderFront(nil)
+                } else {
+                    native.makeKeyAndOrderFront(nil)
+                }
+            } else if native.parent != nil || native.isVisible {
+                if native.parent != nil { window.removeChildWindow(native) }
                 native.orderOut(nil)
             }
         }
     }
 
-    func closeTab(_ id: UUID) {
-        guard var space = spaceContaining(id),
-            let index = space.tabs.firstIndex(where: { $0.id == id })
-        else { return }
-        if let tab = liveTabs.removeValue(forKey: id) {
-            tabIDsByObject.removeValue(forKey: ObjectIdentifier(tab))
-            if let native = tab.nativeWindow, native.parent != nil {
-                window.removeChildWindow(native)
-            }
-            tab.close()
-        }
-        space.tabs.remove(at: index)
-        if space.activeTabID == id {
-            space.activeTabID = space.tabs[max(0, index - 1)...].first?.id
-                ?? space.tabs.last?.id
-        }
-        replace(space)
-        if space.id == activeSpaceID {
-            if let next = space.activeTabID {
-                activateTab(next)
-            } else {
-                newTab()
-            }
+    private func hideAllTabs() {
+        for tab in liveTabs.values {
+            guard let native = tab.nativeWindow else { continue }
+            if native.parent != nil { window.removeChildWindow(native) }
+            native.orderOut(nil)
         }
     }
 
-    // ⌘1…⌘9: pinned tabs first, matching the sidebar order.
+    // Drops a tab's browser but keeps the tab: what ⌘W does to pinned tabs
+    // and favourites in Arc.
+    func unload(_ id: UUID) {
+        guard let tab = liveTabs.removeValue(forKey: id) else { return }
+        tabIDsByObject.removeValue(forKey: ObjectIdentifier(tab))
+        if let native = tab.nativeWindow, native.parent != nil {
+            window.removeChildWindow(native)
+        }
+        tab.close()
+        loadingTabs.remove(id)
+    }
+
+    func isLoaded(_ id: UUID) -> Bool { liveTabs[id] != nil }
+
+    // ⌘W: unpinned tabs go to the archive; pinned ones and favourites are
+    // only unloaded and stay where they are.
+    func closeTab(_ id: UUID) {
+        if favorites.contains(where: { $0.id == id }) || tabData(id)?.isPinned == true {
+            unload(id)
+            if activeSpace.activeTabID == id { activateNeighbor(of: id, in: activeSpace) }
+            return
+        }
+        guard var space = spaceContaining(id),
+            let index = space.tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        unload(id)
+        let tab = space.tabs.remove(at: index)
+        addToArchive(tab, spaceID: space.id)
+        if space.activeTabID == id {
+            // The next tab below, or above when it was the last one.
+            let unpinned = space.tabs.filter { !$0.isPinned }
+            let next = space.tabs[index...].first { !$0.isPinned } ?? unpinned.last
+            space.activeTabID = next?.id
+        }
+        replace(space)
+        if space.id == activeSpaceID { activateTab(space.activeTabID) }
+    }
+
+    private func activateNeighbor(of id: UUID, in space: SpaceData) {
+        let next = space.unpinnedTabs.first ?? space.pinnedTabs.first { $0.id != id }
+        var space = space
+        space.activeTabID = next?.id
+        replace(space)
+        activateTab(next?.id)
+    }
+
+    // ⌘1…⌘9: favourites, then pinned tabs, then today's, as the sidebar
+    // lists them.
     func activateTabAtIndex(_ index: Int) {
         let space = activeSpace
-        let ordered = space.pinnedTabs + space.unpinnedTabs
+        let ordered = favorites + space.pinnedTabs + space.unpinnedTabs
         guard ordered.indices.contains(index) else { return }
         activateTab(ordered[index].id)
     }
@@ -382,50 +424,136 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if let id = activeSpace.activeTabID { closeTab(id) }
     }
 
-    // Drag and drop in the sidebar: reorder within a space, or move to another.
+    // Drag and drop in the sidebar: reorder, pinning or unpinning the tab to
+    // match where it lands.
     func moveTab(_ id: UUID, before targetID: UUID) {
-        guard var space = spaceContaining(id), space.tabs.contains(where: { $0.id == targetID }),
-            let from = space.tabs.firstIndex(where: { $0.id == id })
-        else { return }
-        var tab = space.tabs.remove(at: from)
-        guard let to = space.tabs.firstIndex(where: { $0.id == targetID }) else {
-            space.tabs.insert(tab, at: from)
+        guard id != targetID else { return }
+        if favorites.contains(where: { $0.id == targetID }) {
+            addToFavorites(id, before: targetID)
             return
         }
-        // A tab dropped into the pinned section becomes pinned, and vice versa.
-        if let target = space.tabs.first(where: { $0.id == targetID }) {
-            tab.isPinned = target.isPinned
-        }
+        guard var tab = takeTab(id), var space = spaceContaining(targetID),
+            let target = space.tabs.first(where: { $0.id == targetID })
+        else { return }
+        tab.isPinned = target.isPinned
+        tab.folderID = target.folderID
+        if tab.isPinned, tab.pinnedURL == nil { tab.pinnedURL = tab.url }
+        let to = space.tabs.firstIndex { $0.id == targetID } ?? space.tabs.count
         space.tabs.insert(tab, at: to)
         replace(space)
     }
 
+    // Drop on the pinned or today section itself, after the last tab there.
+    func moveTab(_ id: UUID, toSection pinned: Bool, folder: UUID? = nil) {
+        guard var tab = takeTab(id) else { return }
+        var space = activeSpace
+        tab.isPinned = pinned
+        tab.folderID = pinned ? folder : nil
+        if pinned, tab.pinnedURL == nil { tab.pinnedURL = tab.url }
+        if pinned {
+            let lastPinned = space.tabs.lastIndex { $0.isPinned && $0.folderID == folder }
+            let firstToday = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
+            space.tabs.insert(tab, at: lastPinned.map { $0 + 1 } ?? firstToday)
+        } else {
+            let firstToday = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
+            space.tabs.insert(tab, at: firstToday)
+        }
+        if space.activeTabID == nil { space.activeTabID = tab.id }
+        replace(space)
+    }
+
+    // Removes a tab from wherever it is (a space or the favourites) without
+    // touching its browser, so it can be put somewhere else.
+    private func takeTab(_ id: UUID) -> TabData? {
+        if let index = favorites.firstIndex(where: { $0.id == id }) {
+            let tab = favorites.remove(at: index)
+            scheduleSave()
+            return tab
+        }
+        guard var space = spaceContaining(id),
+            let index = space.tabs.firstIndex(where: { $0.id == id })
+        else { return nil }
+        let tab = space.tabs.remove(at: index)
+        replace(space)
+        return tab
+    }
+
     func moveTab(_ id: UUID, toSpace spaceID: UUID) {
-        guard var source = spaceContaining(id), source.id != spaceID,
-            let index = source.tabs.firstIndex(where: { $0.id == id }),
+        guard spaces.contains(where: { $0.id == spaceID }),
+            spaceContaining(id)?.id != spaceID
+        else { return }
+        let wasActive = activeSpace.activeTabID == id
+        guard var tab = takeTab(id),
             var destination = spaces.first(where: { $0.id == spaceID })
         else { return }
-        let tab = source.tabs.remove(at: index)
-        if source.activeTabID == id { source.activeTabID = source.tabs.first?.id }
-        destination.tabs.append(tab)
-        replace(source)
+        tab.folderID = nil
+        let firstToday = destination.tabs.firstIndex { !$0.isPinned } ?? destination.tabs.count
+        destination.tabs.insert(tab, at: firstToday)
+        if destination.activeTabID == nil { destination.activeTabID = tab.id }
         replace(destination)
-        if source.id == activeSpaceID {
+        if wasActive {
             // The tab's window belongs to the other space now.
-            if let native = liveTabs[id]?.nativeWindow {
-                if native.parent != nil { window.removeChildWindow(native) }
-                native.orderOut(nil)
-            }
-            if let next = activeSpace.activeTabID { activateTab(next) }
+            var space = activeSpace
+            space.activeTabID = space.unpinnedTabs.first?.id ?? space.pinnedTabs.first?.id
+            replace(space)
+            activateTab(space.activeTabID)
         }
     }
 
     func togglePin(_ id: UUID) {
+        if favorites.contains(where: { $0.id == id }) {
+            removeFromFavorites(id)
+            return
+        }
         guard var space = spaceContaining(id),
             let index = space.tabs.firstIndex(where: { $0.id == id })
         else { return }
-        space.tabs[index].isPinned.toggle()
+        var tab = space.tabs.remove(at: index)
+        tab.isPinned.toggle()
+        tab.folderID = nil
+        tab.pinnedURL = tab.isPinned ? tab.url : nil
+        let firstToday = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
+        space.tabs.insert(tab, at: firstToday)
         replace(space)
+    }
+
+    func addToFavorites(_ id: UUID, before targetID: UUID? = nil) {
+        guard var tab = takeTab(id) else { return }
+        tab.isPinned = true
+        tab.folderID = nil
+        tab.pinnedURL = tab.pinnedURL ?? tab.url
+        let index = targetID.flatMap { t in favorites.firstIndex { $0.id == t } } ?? favorites.count
+        favorites.insert(tab, at: index)
+        scheduleSave()
+    }
+
+    // A favourite that is let go becomes a pinned tab of the current space.
+    func removeFromFavorites(_ id: UUID) {
+        guard let index = favorites.firstIndex(where: { $0.id == id }) else { return }
+        var tab = favorites.remove(at: index)
+        tab.isPinned = true
+        var space = activeSpace
+        let firstToday = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
+        space.tabs.insert(tab, at: firstToday)
+        replace(space)
+    }
+
+    func resetToPinnedURL(_ id: UUID) {
+        guard let pinned = tabData(id)?.pinnedURL else { return }
+        update(tabID: id) { $0.url = pinned }
+        if let tab = liveTabs[id] { tab.loadURL(pinned) }
+        if activeSpace.activeTabID == id { addressText = pinned }
+    }
+
+    func duplicateTab(_ id: UUID) {
+        guard let tab = tabData(id) else { return }
+        newTab(url: tab.url)
+    }
+
+    func copyLink(_ id: UUID? = nil) {
+        guard let id = id ?? activeSpace.activeTabID, let tab = tabData(id) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(liveTabs[id]?.currentURL ?? tab.url, forType: .string)
     }
 
     func navigate(to input: String) {
@@ -453,8 +581,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func reload() { activeTab?.reload() }
 
     func focusAddressBar() {
-        if !sidebarVisible { sidebarVisible = true }
-        focusAddressToken += 1
+        if !sidebarVisible { toggleSidebar() }
+        openCommandBar(mode: .current)
     }
 
     // Dragging the sidebar's right edge.
@@ -473,10 +601,84 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func toggleFullscreen() { window.toggleFullScreen(nil) }
 
+    // MARK: - Archive
+
+    func addToArchive(_ tab: TabData, spaceID: UUID?) {
+        guard !tab.url.isEmpty, tab.url != "about:blank" else { return }
+        archive.insert(
+            ArchivedTab(url: tab.url, title: tab.displayTitle, spaceID: spaceID), at: 0)
+        if archive.count > 500 { archive.removeLast(archive.count - 500) }
+        scheduleSave()
+    }
+
+    // Arc's "Clear": today's tabs of the space go to the archive.
+    func clearToday(_ spaceID: UUID? = nil) {
+        guard var space = spaces.first(where: { $0.id == (spaceID ?? activeSpaceID) })
+        else { return }
+        for tab in space.unpinnedTabs {
+            unload(tab.id)
+            addToArchive(tab, spaceID: space.id)
+        }
+        space.tabs.removeAll { !$0.isPinned }
+        if let active = space.activeTabID, !space.tabs.contains(where: { $0.id == active }),
+            !favorites.contains(where: { $0.id == active })
+        {
+            space.activeTabID = space.pinnedTabs.first?.id
+        }
+        replace(space)
+        if space.id == activeSpaceID { activateTab(space.activeTabID) }
+    }
+
+    func restoreArchived(_ id: UUID) {
+        guard let index = archive.firstIndex(where: { $0.id == id }) else { return }
+        let item = archive.remove(at: index)
+        if let spaceID = item.spaceID, spaceID != activeSpaceID,
+            spaces.contains(where: { $0.id == spaceID })
+        {
+            selectSpace(spaceID, animated: false)
+        }
+        newTab(url: item.url)
+        update(tabID: activeSpace.activeTabID ?? UUID()) { $0.title = item.title }
+        sidebarPage = .tabs
+    }
+
+    // Unpinned tabs nobody looked at for 12 hours, except the open one.
+    private func archiveStaleTabs() {
+        let cutoff = Date().addingTimeInterval(-Self.archiveAfter)
+        for index in spaces.indices {
+            var space = spaces[index]
+            let stale = space.tabs.filter {
+                !$0.isPinned && $0.id != space.activeTabID
+                    && ($0.lastActive ?? .distantPast) < cutoff
+            }
+            guard !stale.isEmpty else { continue }
+            for tab in stale { addToArchive(tab, spaceID: space.id) }
+            let ids = Set(stale.map(\.id))
+            space.tabs.removeAll { ids.contains($0.id) }
+            spaces[index] = space
+        }
+        // Tabs from before lastActive existed start counting now.
+        for s in spaces.indices {
+            for t in spaces[s].tabs.indices where spaces[s].tabs[t].lastActive == nil {
+                spaces[s].tabs[t].lastActive = Date()
+            }
+        }
+    }
+
+    // MARK: - Favicons
+
+    private func loadSavedFavicons() {
+        var cache: [String: NSImage] = [:]
+        for tab in favorites + spaces.flatMap(\.tabs) {
+            guard let host = tab.host else { continue }
+            if cache[host] == nil { cache[host] = FaviconStore.load(host: host) }
+            if let icon = cache[host] { favicons[tab.id] = icon }
+        }
+    }
+
     // MARK: - ChaTabDelegate
 
     func tabDidBecomeReady(_ tab: ChaTab) {
-        Diagnostics.mark("first-tab-ready")
         guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
         if activeSpace.activeTabID == id {
             showOnly(tabID: id)
@@ -489,10 +691,13 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func tabDidUpdate(_ tab: ChaTab) {
         guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
         update(tabID: id) {
-            $0.title = tab.title
+            if !tab.title.isEmpty { $0.title = tab.title }
             $0.url = tab.currentURL
         }
-        if let icon = tab.favicon { favicons[id] = icon }
+        if let icon = tab.favicon, favicons[id] !== icon {
+            favicons[id] = icon
+            if let host = URL(string: tab.currentURL)?.host { FaviconStore.save(icon, host: host) }
+        }
         if tab.isLoading { loadingTabs.insert(id) } else { loadingTabs.remove(id) }
         if activeSpace.activeTabID == id {
             addressText = tab.currentURL
@@ -521,6 +726,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             if pendingCloses <= 0 { finishQuit() }
             return
         }
+        // Unloading already forgot the tab; only a page closing itself
+        // (window.close()) arrives here with the tab still known.
         guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
         liveTabs.removeValue(forKey: id)
         tabIDsByObject.removeValue(forKey: ObjectIdentifier(tab))
@@ -530,21 +737,26 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // MARK: - State helpers
 
     func tabData(_ id: UUID) -> TabData? {
-        spaces.flatMap(\.tabs).first { $0.id == id }
+        favorites.first { $0.id == id } ?? spaces.lazy.flatMap(\.tabs).first { $0.id == id }
     }
 
-    private func spaceContaining(_ id: UUID) -> SpaceData? {
+    func spaceContaining(_ id: UUID) -> SpaceData? {
         spaces.first { $0.tabs.contains { $0.id == id } }
     }
 
-    private func replace(_ space: SpaceData) {
+    func replace(_ space: SpaceData) {
         guard let index = spaces.firstIndex(where: { $0.id == space.id })
         else { return }
         spaces[index] = space
         scheduleSave()
     }
 
-    private func update(tabID: UUID, _ body: (inout TabData) -> Void) {
+    func update(tabID: UUID, _ body: (inout TabData) -> Void) {
+        if let index = favorites.firstIndex(where: { $0.id == tabID }) {
+            body(&favorites[index])
+            scheduleSave()
+            return
+        }
         for spaceIndex in spaces.indices {
             guard
                 let tabIndex = spaces[spaceIndex].tabs.firstIndex(where: {
@@ -557,7 +769,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         }
     }
 
-    private func scheduleSave() {
+    func scheduleSave() {
         guard !saveScheduled, !isQuitting else { return }
         saveScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -570,6 +782,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Persistence.save(
             BrowserState(
                 spaces: spaces, activeSpaceID: activeSpaceID,
-                sidebarWidth: Double(sidebarWidth)))
+                sidebarWidth: Double(sidebarWidth), favorites: favorites,
+                archive: archive))
     }
 }

@@ -19,6 +19,7 @@ ChaEngine.shared.run()
 Diagnostics.mark("loop-exited")
 ChaEngine.shared.shutdown()
 Diagnostics.mark("shutdown-done")
+exit(Int32(min(SpaceChecks.failed, 100)))
 
 final class Launcher: NSObject, ChaEngineDelegate {
     var controller: BrowserController?

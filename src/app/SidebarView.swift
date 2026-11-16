@@ -1,49 +1,42 @@
 import SwiftUI
 
-// Arc's sidebar: the space's colour washes over it, favourites sit as a grid
-// of tiles at the top, the open tabs are rounded rows below, and the bottom
-// bar holds the new-tab button next to the space switcher.
+// Arc's sidebar, top to bottom: the window controls and navigation, the
+// address pill, favourites shared by all spaces, then the space's own page
+// (which slides sideways to the next space), and the bottom bar with the
+// archive, one icon per space and "+".
 struct SidebarView: View {
     @ObservedObject var controller: BrowserController
-    @FocusState private var addressFocused: Bool
-    @State private var hoveredTab: UUID?
     @State private var hoveringChrome = false
-    @State private var editingSpace: UUID?
-    @State private var spaceNameDraft = ""
-    @FocusState private var nameFieldFocused: Bool
     @State private var dragStartWidth: CGFloat?
-
-    private var space: SpaceData { controller.activeSpace }
-    private var tint: Color { Color(space.tint.color) }
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            content
+            VStack(spacing: 10) {
+                navigationRow
+                AddressPill(controller: controller)
+                FavoritesGrid(controller: controller)
+                main
+                BottomBar(controller: controller)
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, controller.isFullscreen ? 12 : 38)  // Clear the traffic lights.
+            .padding(.bottom, 10)
             resizeHandle
         }
-        .background(
-            LinearGradient(
-                colors: [tint.opacity(0.28), tint.opacity(0.10)],
-                startPoint: .top, endPoint: .bottom)
-        )
-        .animation(.easeInOut(duration: 0.25), value: space.id)
+        .onHover { hoveringChrome = $0 }
     }
 
-    private var content: some View {
-        VStack(spacing: 10) {
-            navigationRow
-            addressField
-            favorites
-            tabList
-            bottomBar
+    @ViewBuilder
+    private var main: some View {
+        switch controller.sidebarPage {
+        case .tabs:
+            SpacePager(controller: controller)
+        case .editSpace(let id, let isNew):
+            SpaceEditorView(controller: controller, spaceID: id, isNew: isNew)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        case .archive:
+            ArchiveView(controller: controller)
         }
-        .padding(.horizontal, 10)
-        .padding(.top, controller.isFullscreen ? 12 : 38)  // Clear the traffic lights.
-        .padding(.bottom, 10)
-        .onChange(of: controller.focusAddressToken) { _, _ in
-            addressFocused = true
-        }
-        .onHover { hoveringChrome = $0 }
     }
 
     // Dragging the right edge changes the sidebar width, as in Arc.
@@ -72,299 +65,230 @@ struct SidebarView: View {
     // Arc keeps the chrome quiet: the arrows fade in when the pointer is here.
     private var navigationRow: some View {
         HStack(spacing: 2) {
-            navButton("sidebar.left", enabled: true) { controller.toggleSidebar() }
+            ChromeButton(symbol: "sidebar.left", help: "Hide sidebar (⌘S)") {
+                controller.toggleSidebar()
+            }
             Spacer(minLength: 0)
-            navButton("chevron.left", enabled: controller.canGoBack) {
+            ChromeButton(symbol: "chevron.left", enabled: controller.canGoBack, help: "Back") {
                 controller.goBack()
             }
-            navButton("chevron.right", enabled: controller.canGoForward) {
+            ChromeButton(
+                symbol: "chevron.right", enabled: controller.canGoForward, help: "Forward"
+            ) {
                 controller.goForward()
             }
-            navButton("arrow.clockwise", enabled: true) { controller.reload() }
+            ChromeButton(symbol: "arrow.clockwise", help: "Reload") { controller.reload() }
         }
-        .opacity(hoveringChrome ? 1 : 0.45)
+        .opacity(hoveringChrome ? 1 : 0.5)
         .animation(.easeOut(duration: 0.15), value: hoveringChrome)
     }
+}
 
-    private func navButton(
-        _ symbol: String, enabled: Bool, action: @escaping () -> Void
-    ) -> some View {
+// MARK: - Shared styling
+
+// Arc lifts the open tab onto a card: near-white in light mode, a soft glass
+// in dark mode, so the title stays readable on either.
+struct SidebarStyle {
+    let dark: Bool
+    func card(active: Bool, hovered: Bool) -> Color {
+        if active { return dark ? .white.opacity(0.17) : .white.opacity(0.88) }
+        if hovered { return dark ? .white.opacity(0.08) : .white.opacity(0.38) }
+        return .clear
+    }
+    var tile: Color { dark ? .white.opacity(0.09) : .white.opacity(0.34) }
+    var activeTile: Color { dark ? .white.opacity(0.22) : .white.opacity(0.9) }
+    var pill: Color { dark ? .white.opacity(0.10) : .white.opacity(0.40) }
+    var shadow: Color { .black.opacity(dark ? 0.25 : 0.10) }
+}
+
+struct ChromeButton: View {
+    let symbol: String
+    var enabled = true
+    var help = ""
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 24, height: 24)
-                .foregroundStyle(
-                    enabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary)
-                )
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 26, height: 24)
+                .foregroundStyle(enabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 .background(
-                    Circle().fill(.white.opacity(enabled ? 0.18 : 0))
-                )
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.primary.opacity(hovered && enabled ? 0.08 : 0)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .help(help)
+        .onHover { hovered = $0 }
     }
+}
 
-    // MARK: - Address bar
+struct TabIcon: View {
+    @ObservedObject var controller: BrowserController
+    let tab: TabData
+    let size: CGFloat
 
-    private var addressField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.system(size: 11, weight: .semibold))
-            TextField("Search or enter address", text: $controller.addressText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
-                .focused($addressFocused)
-                .onSubmit {
-                    controller.navigate(to: controller.addressText)
-                    addressFocused = false
-                }
-                .onTapGesture { controller.openCommandBar(mode: .current) }
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.white.opacity(0.22))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
-        )
-    }
-
-    // MARK: - Favourites
-
-    // Pinned tabs become a grid of tiles, the way Arc shows favourites.
-    @ViewBuilder
-    private var favorites: some View {
-        let pinned = space.pinnedTabs
-        if !pinned.isEmpty {
-            let columns = Array(
-                repeating: GridItem(.flexible(), spacing: 6), count: 4)
-            LazyVGrid(columns: columns, spacing: 6) {
-                ForEach(pinned) { tab in
-                    favoriteTile(tab)
-                }
+    var body: some View {
+        Group {
+            if controller.loadingTabs.contains(tab.id) {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(size / 22)
+            } else if let favicon = controller.favicons[tab.id] {
+                Image(nsImage: favicon)
+                    .resizable()
+                    .interpolation(.high)
+                    .clipShape(RoundedRectangle(cornerRadius: size / 4, style: .continuous))
+            } else {
+                Image(systemName: "globe")
+                    .font(.system(size: size * 0.8))
+                    .foregroundStyle(.secondary)
             }
         }
+        .frame(width: size, height: size)
+    }
+}
+
+struct SpaceIcon: View {
+    let space: SpaceData
+    var size: CGFloat = 12
+
+    var body: some View {
+        if space.symbolIsEmoji {
+            Text(space.symbol).font(.system(size: size + 1))
+        } else {
+            Image(systemName: space.symbol).font(.system(size: size, weight: .medium))
+        }
+    }
+}
+
+// Drag payloads: a tab's UUID, or "space:<UUID>" for a space icon.
+enum DragPayload {
+    static func tab(_ id: UUID) -> NSItemProvider {
+        NSItemProvider(object: id.uuidString as NSString)
+    }
+    static func space(_ id: UUID) -> NSItemProvider {
+        NSItemProvider(object: ("space:" + id.uuidString) as NSString)
+    }
+    static func tabID(_ items: [String]) -> UUID? {
+        items.first.flatMap(UUID.init(uuidString:))
+    }
+    static func spaceID(_ items: [String]) -> UUID? {
+        guard let item = items.first, item.hasPrefix("space:") else { return nil }
+        return UUID(uuidString: String(item.dropFirst(6)))
+    }
+}
+
+// MARK: - Address pill
+
+// The host only, the way Arc shows it; clicking opens the command bar on the
+// full address, and hovering offers to copy the link.
+struct AddressPill: View {
+    @ObservedObject var controller: BrowserController
+    @Environment(\.colorScheme) private var scheme
+    @State private var hovered = false
+
+    var body: some View {
+        let style = SidebarStyle(dark: scheme == .dark)
+        let url = controller.addressText
+        let secure = url.hasPrefix("https://")
+        HStack(spacing: 6) {
+            if !url.isEmpty, url != "about:blank" {
+                Image(systemName: secure ? "lock.fill" : "globe")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            Text(label(url))
+                .font(.system(size: 12.5))
+                .foregroundStyle(url.isEmpty || url == "about:blank" ? .tertiary : .secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+            if hovered, !url.isEmpty, url != "about:blank" {
+                Button {
+                    controller.copyLink()
+                } label: {
+                    Image(systemName: "link")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy link (⇧⌘C)")
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(style.pill))
+        .contentShape(Rectangle())
+        .onTapGesture { controller.openCommandBar(mode: .current) }
+        .onHover { hovered = $0 }
     }
 
-    private func favoriteTile(_ tab: TabData) -> some View {
-        let isActive = space.activeTabID == tab.id
-        return icon(for: tab, size: 17)
+    private func label(_ url: String) -> String {
+        if url.isEmpty || url == "about:blank" { return "Search or enter address" }
+        if url.hasPrefix("data:") { return "data:" }
+        return displayHost(url) ?? url
+    }
+}
+
+// MARK: - Favourites
+
+// Favourites are shared by every space and sit above them as tiles. The grid
+// takes drops, so dragging a tab up makes it a favourite.
+struct FavoritesGrid: View {
+    @ObservedObject var controller: BrowserController
+    @Environment(\.colorScheme) private var scheme
+    @State private var targeted = false
+
+    var body: some View {
+        let favorites = controller.favorites
+        if !favorites.isEmpty {
+            let columns = Array(
+                repeating: GridItem(.flexible(), spacing: 7), count: min(4, favorites.count))
+            LazyVGrid(columns: columns, spacing: 7) {
+                ForEach(favorites) { tab in tile(tab) }
+            }
+            .dropDestination(for: String.self) { items, _ in
+                guard let id = DragPayload.tabID(items) else { return false }
+                controller.addToFavorites(id)
+                return true
+            } isTargeted: { targeted = $0 }
+        }
+    }
+
+    private func tile(_ tab: TabData) -> some View {
+        let style = SidebarStyle(dark: scheme == .dark)
+        let isActive = controller.activeTabID == tab.id
+        let loaded = controller.isLoaded(tab.id)
+        return TabIcon(controller: controller, tab: tab, size: 18)
+            .opacity(loaded || isActive ? 1 : 0.75)
             .frame(maxWidth: .infinity)
-            .frame(height: 38)
+            .frame(height: 44)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.white.opacity(isActive ? 0.85 : 0.25))
-                    .shadow(
-                        color: .black.opacity(isActive ? 0.12 : 0), radius: 3, y: 1)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(isActive ? style.activeTile : style.tile)
+                    .shadow(color: isActive ? style.shadow : .clear, radius: 3, y: 1)
             )
             .contentShape(Rectangle())
             .onTapGesture { controller.activateTab(tab.id) }
             .help(tab.displayTitle)
-            .onDrag { NSItemProvider(object: tab.id.uuidString as NSString) }
+            .onDrag { DragPayload.tab(tab.id) }
             .dropDestination(for: String.self) { items, _ in
-                guard let dragged = items.first.flatMap(UUID.init(uuidString:))
-                else { return false }
-                controller.moveTab(dragged, before: tab.id)
+                guard let id = DragPayload.tabID(items) else { return false }
+                controller.moveTab(id, before: tab.id)
                 return true
             }
             .contextMenu {
-                Button("Unpin Tab") { controller.togglePin(tab.id) }
-                Button("Close Tab") { controller.closeTab(tab.id) }
-            }
-    }
-
-    // MARK: - Tabs
-
-    private var tabList: some View {
-        ScrollView {
-            // A plain stack: a sidebar holds tens of rows, not thousands, and
-            // it renders whole for the offscreen checks.
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(space.unpinnedTabs) { tab in
-                    tabRow(tab)
+                Button("Remove from Favorites") { controller.removeFromFavorites(tab.id) }
+                Button("Copy Link") { controller.copyLink(tab.id) }
+                if tab.hasLeftPinnedURL {
+                    Button("Back to Pinned Address") { controller.resetToPinnedURL(tab.id) }
                 }
+                Divider()
+                Button("Unload") { controller.unload(tab.id) }.disabled(!loaded)
             }
-            .padding(.top, 2)
-        }
-        .scrollIndicators(.never)
-    }
-
-    private func tabRow(_ tab: TabData) -> some View {
-        let isActive = space.activeTabID == tab.id
-        let isHovered = hoveredTab == tab.id
-        return HStack(spacing: 8) {
-            icon(for: tab, size: 14)
-            Text(tab.displayTitle)
-                .font(.system(size: 12.5, weight: isActive ? .medium : .regular))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-            if isHovered {
-                Button {
-                    controller.closeTab(tab.id)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Close tab")
-            }
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .background(
-            // Arc lifts the open tab onto a white card and leaves the rest flat.
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(
-                    .white.opacity(isActive ? 0.85 : (isHovered ? 0.35 : 0))
-                )
-                .shadow(color: .black.opacity(isActive ? 0.10 : 0), radius: 3, y: 1)
-        )
-        .contentShape(Rectangle())
-        .onHover { hovering in hoveredTab = hovering ? tab.id : nil }
-        .onTapGesture { controller.activateTab(tab.id) }
-        .onDrag { NSItemProvider(object: tab.id.uuidString as NSString) }
-        .dropDestination(for: String.self) { items, _ in
-            guard let dragged = items.first.flatMap(UUID.init(uuidString:))
-            else { return false }
-            controller.moveTab(dragged, before: tab.id)
-            return true
-        }
-        .contextMenu {
-            Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") {
-                controller.togglePin(tab.id)
-            }
-            Button("Close Tab") { controller.closeTab(tab.id) }
-        }
-    }
-
-    @ViewBuilder
-    private func icon(for tab: TabData, size: CGFloat) -> some View {
-        if controller.loadingTabs.contains(tab.id) {
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.6)
-                .frame(width: size, height: size)
-        } else if let favicon = controller.favicons[tab.id] {
-            Image(nsImage: favicon)
-                .resizable()
-                .frame(width: size, height: size)
-                .cornerRadius(size / 4)
-        } else {
-            Image(systemName: "globe")
-                .font(.system(size: size * 0.8))
-                .foregroundStyle(.secondary)
-                .frame(width: size, height: size)
-        }
-    }
-
-    // MARK: - Bottom bar
-
-    // New tab lives at the bottom in Arc, with the spaces beside it.
-    private var bottomBar: some View {
-        VStack(spacing: 8) {
-            Button {
-                controller.openCommandBar(mode: .newTab)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("New Tab")
-                        .font(.system(size: 12.5))
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            spaceSwitcher
-        }
-    }
-
-    private var spaceSwitcher: some View {
-        VStack(spacing: 5) {
-            Divider().opacity(0.4)
-            HStack {
-                if editingSpace == space.id {
-                    TextField("Space name", text: $spaceNameDraft)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .focused($nameFieldFocused)
-                        .onSubmit {
-                            controller.renameSpace(space.id, to: spaceNameDraft)
-                            editingSpace = nil
-                        }
-                        .onAppear { nameFieldFocused = true }
-                } else {
-                    Text(space.name)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .onTapGesture(count: 2) {
-                            editingSpace = space.id
-                            spaceNameDraft = space.name
-                        }
-                }
-                Spacer(minLength: 0)
-                Button {
-                    controller.addSpace()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .bold))
-                        .frame(width: 20, height: 20)
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-                .help("New space")
-            }
-            .padding(.horizontal, 4)
-
-            HStack(spacing: 4) {
-                ForEach(controller.spaces) { item in
-                    spaceButton(item)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 2)
-        }
-    }
-
-    private func spaceButton(_ item: SpaceData) -> some View {
-        let isActive = item.id == controller.activeSpaceID
-        return Button {
-            controller.selectSpace(item.id)
-        } label: {
-            Image(systemName: item.symbol)
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 28, height: 24)
-                .foregroundStyle(
-                    isActive ? AnyShapeStyle(Color(item.tint.color))
-                        : AnyShapeStyle(.secondary)
-                )
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(.white.opacity(isActive ? 0.7 : 0)))
-        }
-        .buttonStyle(.plain)
-        .help(item.name)
-        .dropDestination(for: String.self) { items, _ in
-            guard let dragged = items.first.flatMap(UUID.init(uuidString:))
-            else { return false }
-            controller.moveTab(dragged, toSpace: item.id)
-            return true
-        }
-        .contextMenu {
-            Button("Rename Space…") {
-                editingSpace = item.id
-                spaceNameDraft = item.name
-            }
-        }
     }
 }

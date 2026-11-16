@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# cha's acceptance: build, then the headless scenarios against throwaway
+# profiles, then the launch/quit bench. Nothing takes focus, plays sound or
+# shows on screen, so it is safe to run while someone uses this Mac.
+#
+#   scripts/check.sh          # build + spaces + codes + bench
+#   scripts/check.sh fast     # build + spaces
+#
+# Pictures land in build/shots, logs in build/check. Exit code = failed steps.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+mode="${1:-full}"
+mkdir -p build/check build/shots
+failed=0
+
+step() { printf '\n== %s\n' "$1"; }
+
+run_scenario() {  # name, timeout seconds
+  local name="$1" limit="$2" profile="build/check/profile-$1"
+  rm -rf "$profile"
+  CHA_HEADLESS=1 CHA_TEST="$name" CHA_PROFILE="$PWD/$profile" \
+    build/cha.app/Contents/MacOS/cha >"build/check/$name.log" 2>&1 &
+  local pid=$! waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 1; waited=$((waited + 1))
+    if [ "$waited" -ge "$limit" ]; then
+      echo "timed out after ${limit}s"
+      pkill -9 -f "build/cha.app/Contents" ; return 1
+    fi
+  done
+  wait "$pid"
+}
+
+step "build"
+if ! nice -n 10 scripts/bundle.sh >build/check/build.log 2>&1; then
+  grep -E 'error' build/check/build.log | head -20
+  echo "build FAILED"; exit 1
+fi
+echo "ok"
+
+step "spaces"
+run_scenario spaces 90; code=$?
+grep -E 'CHECK FAIL|CHECKS' build/check/spaces.log | sed 's/^.*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/spaces.log; then
+  echo "spaces FAILED (exit $code)"; failed=$((failed + 1))
+fi
+
+if [ "$mode" = full ]; then
+  step "codes"
+  run_scenario codes 40
+  grep -E 'CODES' build/check/codes.log | sed 's/^.*cha\[[^]]*\] //'
+  # The filled field must hold exactly the code the generator gave.
+  fills=$(grep -cE 'CODES (fill|boxes) [A-Z]+ \[([0-9]+)\] expected=\1$' build/check/codes.log)
+  if grep -q 'FAIL' build/check/codes.log || [ "$fills" -ne 2 ]; then
+    echo "codes FAILED"; failed=$((failed + 1))
+  fi
+
+  step "launch and quit"
+  if ! scripts/bench.py 5; then echo "bench FAILED"; failed=$((failed + 1)); fi
+fi
+
+printf '\n%s\n' "$([ $failed -eq 0 ] && echo "ALL PASSED" || echo "$failed step(s) FAILED")"
+exit $failed

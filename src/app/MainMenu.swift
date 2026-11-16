@@ -27,7 +27,6 @@ enum MainMenu {
         file.add("Close Tab", "w", target, #selector(MenuTarget.closeTab))
         file.add("Empty Tab", "t", target, #selector(MenuTarget.emptyTab), [.command, .shift])
         file.addItem(.separator())
-        file.add("New Space", "n", target, #selector(MenuTarget.newSpace), [.command, .shift])
         file.addItem(.separator())
         file.add("Passwords…", "", target, #selector(MenuTarget.passwords), [])
         file.add(
@@ -69,19 +68,57 @@ enum MainMenu {
         view.addItem(fullscreen)
         bar.addItem(submenu: view, title: "View")
 
+        // Tabs: pin, favourite, copy, clear — the tab-level keys Arc has.
+        let tabs = NSMenu(title: "Tab")
+        tabs.add("Pin / Unpin Tab", "d", target, #selector(MenuTarget.togglePin))
+        tabs.add(
+            "Add to Favorites", "d", target, #selector(MenuTarget.addToFavorites),
+            [.command, .shift])
+        tabs.add("Copy Link", "c", target, #selector(MenuTarget.copyLink), [.command, .shift])
+        tabs.add("Duplicate Tab", "", target, #selector(MenuTarget.duplicateTab), [])
+        tabs.add(
+            "Back to Pinned Address", "", target, #selector(MenuTarget.resetPinned), [])
+        tabs.addItem(.separator())
+        tabs.add(
+            "Clear Today's Tabs", "k", target, #selector(MenuTarget.clearToday),
+            [.command, .shift])
+        tabs.add(
+            "Archived Tabs", "a", target, #selector(MenuTarget.showArchive),
+            [.command, .option])
+        bar.addItem(submenu: tabs, title: "Tab")
+
+        // Spaces: ⌃1…⌃9 jump straight to one, as in Arc.
+        let spaces = NSMenu(title: "Spaces")
+        spaces.add("New Space", "n", target, #selector(MenuTarget.newSpace), [.command, .shift])
+        spaces.add("Edit Space…", "", target, #selector(MenuTarget.editSpace), [])
+        spaces.add("New Folder", "", target, #selector(MenuTarget.newFolder), [])
+        spaces.add("Delete Space…", "", target, #selector(MenuTarget.deleteSpace), [])
+        spaces.addItem(.separator())
+        spaces.add(
+            "Next Space", String(UnicodeScalar(NSRightArrowFunctionKey)!), target,
+            #selector(MenuTarget.nextSpace), [.command, .option])
+        spaces.add(
+            "Previous Space", String(UnicodeScalar(NSLeftArrowFunctionKey)!), target,
+            #selector(MenuTarget.previousSpace), [.command, .option])
+        for number in 1...9 {
+            let item = NSMenuItem(
+                title: "Space \(number)", action: #selector(MenuTarget.selectSpaceByNumber(_:)),
+                keyEquivalent: String(number))
+            item.keyEquivalentModifierMask = [.control]
+            item.tag = number - 1
+            item.target = target
+            item.isHidden = true
+            item.allowsKeyEquivalentWhenHidden = true
+            spaces.addItem(item)
+        }
+        bar.addItem(submenu: spaces, title: "Spaces")
+
         let navigate = NSMenu(title: "Navigate")
         navigate.add("Back", "[", target, #selector(MenuTarget.goBack))
         navigate.add("Forward", "]", target, #selector(MenuTarget.goForward))
         navigate.addItem(.separator())
         navigate.add(
             "Open Location", "l", target, #selector(MenuTarget.focusAddressBar))
-        navigate.addItem(.separator())
-        navigate.add(
-            "Next Space", String(UnicodeScalar(NSRightArrowFunctionKey)!), target,
-            #selector(MenuTarget.nextSpace), [.command, .option])
-        navigate.add(
-            "Previous Space", String(UnicodeScalar(NSLeftArrowFunctionKey)!), target,
-            #selector(MenuTarget.previousSpace), [.command, .option])
         // ⌘1…⌘9 pick a tab in the current space; the items stay hidden.
         for number in 1...9 {
             let item = NSMenuItem(
@@ -90,6 +127,7 @@ enum MainMenu {
             item.tag = number - 1
             item.target = target
             item.isHidden = true
+            item.allowsKeyEquivalentWhenHidden = true
             navigate.addItem(item)
         }
         bar.addItem(submenu: navigate, title: "Navigate")
@@ -129,6 +167,40 @@ final class MenuTarget: NSObject {
         controller?.activateTabAtIndex(sender.tag)
     }
     @objc func newSpace() { controller?.addSpace() }
+    @objc func editSpace() {
+        guard let c = controller else { return }
+        c.editSpace(c.activeSpaceID)
+    }
+    @objc func deleteSpace() {
+        guard let c = controller else { return }
+        c.deleteSpace(c.activeSpaceID)
+    }
+    @objc func newFolder() { controller?.addFolder() }
+    @objc func selectSpaceByNumber(_ sender: NSMenuItem) {
+        controller?.selectSpace(at: sender.tag)
+    }
+    @objc func togglePin() {
+        guard let c = controller, let id = c.activeTabID else { return }
+        c.togglePin(id)
+    }
+    @objc func addToFavorites() {
+        guard let c = controller, let id = c.activeTabID else { return }
+        c.addToFavorites(id)
+    }
+    @objc func copyLink() { controller?.copyLink() }
+    @objc func duplicateTab() {
+        guard let c = controller, let id = c.activeTabID else { return }
+        c.duplicateTab(id)
+    }
+    @objc func resetPinned() {
+        guard let c = controller, let id = c.activeTabID else { return }
+        c.resetToPinnedURL(id)
+    }
+    @objc func clearToday() { controller?.clearToday() }
+    @objc func showArchive() {
+        guard let c = controller else { return }
+        c.sidebarPage = c.sidebarPage == .archive ? .tabs : .archive
+    }
     // Chromium's own password manager, reachable without a toolbar.
     @objc func passwords() {
         controller?.newTab(url: "chrome://password-manager/passwords")

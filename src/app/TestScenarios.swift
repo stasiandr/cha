@@ -15,6 +15,9 @@ enum TestScenarios {
             }
             at(20) { NSApp.terminate(nil) }
 
+        case "spaces":
+            SpaceChecks.run(controller)
+
         case "shot":
             at(2) { shot("look") }
             at(3) { NSApp.terminate(nil) }
@@ -200,15 +203,19 @@ enum TestScenarios {
         content.cacheDisplay(in: bounds, to: rep)
         let image = NSImage(size: bounds.size)
         image.addRepresentation(rep)
-        if let page = window.childWindows?.first(where: { $0.isVisible && !($0 is NSPanel) }),
-            let pageView = page.contentView,
-            let pageRep = pageView.bitmapImageRepForCachingDisplay(in: pageView.bounds)
-        {
-            pageView.cacheDisplay(in: pageView.bounds, to: pageRep)
-            let origin = NSPoint(
-                x: page.frame.minX - window.frame.minX, y: page.frame.minY - window.frame.minY)
+        // Chromium's pixels don't come through cacheDisplay, so the page is
+        // drawn as a plain card where its window sits, to judge the layout.
+        if let page = window.childWindows?.first(where: { $0.isVisible && !($0 is NSPanel) }) {
+            let rect = NSRect(
+                x: page.frame.minX - window.frame.minX, y: page.frame.minY - window.frame.minY,
+                width: page.frame.width, height: page.frame.height)
+            let dark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             image.lockFocus()
-            pageRep.draw(in: NSRect(origin: origin, size: page.frame.size))
+            (dark ? NSColor(white: 0.13, alpha: 1) : NSColor.white).setFill()
+            NSBezierPath(
+                roundedRect: rect, xRadius: BrowserController.contentCornerRadius,
+                yRadius: BrowserController.contentCornerRadius
+            ).fill()
             image.unlockFocus()
         }
         guard let tiff = image.tiffRepresentation,

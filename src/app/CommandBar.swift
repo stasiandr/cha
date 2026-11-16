@@ -13,6 +13,8 @@ enum CommandResult: Identifiable, Equatable {
     case open(url: String)
     case search(query: String)
     case addCode(uri: String)  // An otpauth:// link typed or pasted in.
+    case space(id: UUID, name: String)
+    case archived(id: UUID, title: String, url: String)
 
     var id: String {
         switch self {
@@ -20,6 +22,8 @@ enum CommandResult: Identifiable, Equatable {
         case .open(let url): return "open-\(url)"
         case .search(let query): return "search-\(query)"
         case .addCode: return "add-code"
+        case .space(let id, _): return "space-\(id)"
+        case .archived(let id, _, _): return "archived-\(id)"
         }
     }
 
@@ -29,6 +33,8 @@ enum CommandResult: Identifiable, Equatable {
         case .open(let url): return url
         case .search(let query): return query
         case .addCode(let uri): return OTPAuth.parse(uri)?.label ?? "Verification code"
+        case .space(_, let name): return name
+        case .archived(_, let title, _): return title
         }
     }
 
@@ -38,6 +44,8 @@ enum CommandResult: Identifiable, Equatable {
         case .open: return "Open address"
         case .search: return "Search with Google"
         case .addCode: return "Save this verification code"
+        case .space: return "Switch to space"
+        case .archived(_, _, let url): return "Archived · " + url
         }
     }
 
@@ -47,6 +55,8 @@ enum CommandResult: Identifiable, Equatable {
         case .open: return "arrow.up.right"
         case .search: return "magnifyingglass"
         case .addCode: return "lock.rotation"
+        case .space: return "square.stack"
+        case .archived: return "archivebox"
         }
     }
 }
