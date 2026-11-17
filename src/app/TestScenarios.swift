@@ -207,6 +207,25 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "window":
+            // The window comes back: hidden, then ⌘N as the menu has it.
+            at(2) { controller.window.orderOut(nil) }
+            at(2.5) {
+                SpaceChecks.check("window hidden", controller.window.isVisible == false)
+                guard let item = NSApp.mainMenu?.items.compactMap(\.submenu)
+                    .flatMap(\.items).first(where: { $0.title == "New Window" })
+                else { return SpaceChecks.check("New Window in the menu", false) }
+                SpaceChecks.check("⌘N is New Window", item.keyEquivalent == "n"
+                    && item.keyEquivalentModifierMask == [.command])
+                NSApp.sendAction(item.action!, to: item.target, from: item)
+            }
+            at(3.5) {
+                SpaceChecks.check("⌘N shows the window", controller.window.isVisible)
+                SpaceChecks.check("with its page", controller.activeTab?.nativeWindow?.isVisible == true)
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "newtablinks":
             // Links that ask for a new tab must become cha's tabs, never a
             // window of Chromium's own: ⌘T with a page in front, then ⌘-click.

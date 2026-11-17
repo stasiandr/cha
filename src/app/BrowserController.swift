@@ -190,6 +190,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Diagnostics.mark("window")
         applySpaceTint()
         installSwipeMonitor()
+        installReopen()
         window.acceptsMouseMovedEvents = true
         // Spaces' own profiles get ready while the first page loads.
         for profile in profiles { ChaTab.prepareProfile(profile.id.uuidString) }
@@ -375,6 +376,44 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         updateTrafficLights()
         applyPageShape()
         layoutActiveTab()
+    }
+
+    // ⌘N, the Dock, hop: the main window in front. It is put back on a screen
+    // if its saved place is on none (a monitor since unplugged or asleep).
+    func showMainWindow() {
+        guard !isQuitting, let window else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        if !Diagnostics.quiet,
+            !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(window.frame) })
+        {
+            let mouse = NSEvent.mouseLocation
+            let screen = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0])
+                .visibleFrame
+            var frame = window.frame
+            frame.size.width = min(frame.width, screen.width)
+            frame.size.height = min(frame.height, screen.height)
+            frame.origin = NSPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2)
+            window.setFrame(frame, display: true)
+        }
+        if Diagnostics.quiet {
+            window.orderFront(nil)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
+        layoutActiveTab()
+        if let id = activeTabID { showOnly(tabID: id) }
+        NSLog("WINDOW shown")
+    }
+
+    // Activated with no window on screen (hop, the Dock, ⌘-Tab): show it.
+    func installReopen() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, !self.isQuitting, let window = self.window else { return }
+            if !window.isVisible || window.isMiniaturized { self.showMainWindow() }
+        }
     }
 
     // Closing the only window quits, the same way ⌘Q does.

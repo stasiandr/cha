@@ -69,9 +69,22 @@ final class Launcher: NSObject, NSApplicationDelegate {
         if ownProfile,
             let running = NSRunningApplication.runningApplications(withBundleIdentifier: chaBundleID).first
         {
-            note("already running: bringing it forward")
-            if !headless { running.activate() }
-            NSApp.terminate(nil)
+            // A cha with no window on screen is one that is quitting (it hides
+            // its windows at once, then writes the profile out for a few
+            // seconds): bringing it forward showed nothing. Wait for it to go,
+            // then open a fresh one.
+            if Self.hasWindowOnScreen(running.processIdentifier) {
+                note("already running: bringing it forward")
+                if !headless { running.activate() }
+                NSApp.terminate(nil)
+                return
+            }
+            note("running but quitting: waiting for it to end")
+            DispatchQueue.global(qos: .userInitiated).async {
+                let deadline = Date().addingTimeInterval(20)
+                while !running.isTerminated, Date() < deadline { usleep(100_000) }
+                DispatchQueue.main.async { self.decide() }
+            }
             return
         }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -86,6 +99,16 @@ final class Launcher: NSObject, NSApplicationDelegate {
                     self.startBuild(reason: built == nil ? "cha ещё не собран" : "Код изменился")
                 }
             }
+        }
+    }
+
+    static func hasWindowOnScreen(_ pid: pid_t) -> Bool {
+        guard
+            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else { return true }
+        return list.contains {
+            ($0[kCGWindowOwnerPID as String] as? pid_t) == pid && ($0[kCGWindowLayer as String] as? Int) == 0
         }
     }
 

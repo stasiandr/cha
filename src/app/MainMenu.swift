@@ -29,6 +29,7 @@ enum MainMenu {
         bar.addItem(submenu: app, title: "cha")
 
         let file = NSMenu(title: "File")
+        file.add("New Window", "n", target, #selector(MenuTarget.showWindow))
         file.add("New Tab", "t", target, #selector(MenuTarget.newTab))
         file.add("Close Tab", "w", target, #selector(MenuTarget.closeTab))
         file.add(
@@ -232,6 +233,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
         c.addToFavorites(id)
     }
     @objc func copyLink() { controller?.copyLink() }
+    @objc func showWindow() { controller?.showMainWindow() }
     @objc func makeDefaultBrowser() { URLOpener.makeDefault() }
     @objc func pictureInPicture() { controller?.togglePictureInPicture() }
     @objc func findInPage() { controller?.openFindBar() }
