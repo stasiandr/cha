@@ -61,7 +61,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // Slides the sidebar out to the left (−width) and back.
     var sidebarLeadingConstraint: NSLayoutConstraint?
     var sidebarAnimating = false
-    static let sidebarDuration: TimeInterval = 0.3
+    static let sidebarDuration: TimeInterval = 0.15
     var commandPanel: CommandPanel?
     var findPanel: CommandPanel?
     var peek: PeekController?
@@ -949,14 +949,17 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     // The sidebar slides out to the left while the page widens into its
-    // place, and back, in 300 ms. The page's shape (card or whole screen) and
-    // the traffic lights change at the start.
+    // place, and back, in 150 ms on an ease-out curve (quick start, soft
+    // landing). One frame clock drives both: on every display refresh the
+    // sidebar's offset and the page's frame are set from the same eased
+    // progress (two separate AppKit animations drifted apart and stuttered).
+    // The page's shape (card or whole screen) and the traffic lights change
+    // at the start.
     func toggleSidebar(animated: Bool = true) {
         let showing = !sidebarVisible
         guard animated, let sidebar = sidebarView, let leading = sidebarLeadingConstraint, window != nil
         else {
-            sidebarGeneration += 1
-            sidebarAnimating = false
+            stopSidebarSlide()
             sidebarLeadingConstraint?.constant = 0
             sidebarVisible = showing
             sidebarView?.isHidden = !showing
@@ -966,41 +969,87 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             layoutActiveTab()
             return
         }
-        sidebarAnimating = true
-        sidebarGeneration += 1
-        let generation = sidebarGeneration
-        if showing {
-            leading.constant = -sidebarWidth
-            sidebar.isHidden = false
-            window.contentView?.layoutSubtreeIfNeeded()
-        }
+        // Mid-slide toggles start from where the sidebar is now.
+        let fromOffset = sidebarAnimating ? leading.constant : (showing ? -sidebarWidth : 0)
+        let page = activeTab?.nativeWindow
+        let fromPage = page?.frame ?? .zero
+        stopSidebarSlide()
+        leading.constant = fromOffset
+        sidebar.isHidden = false
         sidebarVisible = showing
         updateTrafficLights()
         applyPageShape()
-        layoutContentWell()
         repositionFindBar()
         peek?.layout()
-        let page = activeTab?.nativeWindow
-        let target = contentScreenRect
-        let finish: () -> Void = { [weak self] in
-            guard let self, self.sidebarGeneration == generation, self.sidebarAnimating else { return }
-            self.sidebarAnimating = false
-            if !self.sidebarVisible { sidebar.isHidden = true }
-            leading.constant = 0
-            self.layoutActiveTab()
+        sidebarSlide = SidebarSlide(
+            start: CACurrentMediaTime(), fromOffset: fromOffset, toOffset: showing ? 0 : -sidebarWidth,
+            fromPage: fromPage, toPage: contentScreenRect, page: page)
+        sidebarAnimating = true
+        if Diagnostics.headless || window.screen == nil {
+            // Off screen there is no display to sync to: a 120 Hz timer.
+            let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in self?.sidebarTick() }
+            RunLoop.main.add(timer, forMode: .common)
+            sidebarTimer = timer
+        } else {
+            let link = window.displayLink(target: self, selector: #selector(sidebarFrame(_:)))
+            link.add(to: .main, forMode: .common)
+            sidebarLink = link
         }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.sidebarDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            context.allowsImplicitAnimation = true
-            leading.animator().constant = showing ? 0 : -sidebarWidth
-            page?.animator().setFrame(target, display: true)
-            window.contentView?.layoutSubtreeIfNeeded()
-        } completionHandler: { finish() }
-        // Finishes on a timer too, should the completion never come.
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.sidebarDuration + 0.05, execute: finish)
+        sidebarTick()
     }
-    private var sidebarGeneration = 0
+
+    struct SidebarSlide {
+        let start: CFTimeInterval
+        let fromOffset: CGFloat, toOffset: CGFloat
+        let fromPage: NSRect, toPage: NSRect
+        weak var page: NSWindow?
+    }
+    private var sidebarSlide: SidebarSlide?
+    private var sidebarLink: CADisplayLink?
+    private var sidebarTimer: Timer?
+
+    @objc private func sidebarFrame(_ link: CADisplayLink) { sidebarTick() }
+
+    // Ease-out cubic: most of the way early, settling gently.
+    static func easeOut(_ t: Double) -> Double { 1 - pow(1 - t, 3) }
+
+    private func sidebarTick() {
+        guard let slide = sidebarSlide, let leading = sidebarLeadingConstraint else { return }
+        let t = min(1, (CACurrentMediaTime() - slide.start) / Self.sidebarDuration)
+        let e = CGFloat(Self.easeOut(t))
+        func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * e }
+        leading.constant = mix(slide.fromOffset, slide.toOffset)
+        window?.contentView?.layoutSubtreeIfNeeded()
+        if let page = slide.page, slide.fromPage != .zero {
+            let f = NSRect(
+                x: mix(slide.fromPage.minX, slide.toPage.minX), y: mix(slide.fromPage.minY, slide.toPage.minY),
+                width: mix(slide.fromPage.width, slide.toPage.width),
+                height: mix(slide.fromPage.height, slide.toPage.height))
+            page.setFrame(f.integral, display: true)
+        }
+        sidebarProgress.append(Double(e))
+        if t >= 1 { NSLog("SIDEBAR slide: %d frames (%@)", sidebarProgress.count, sidebarLink != nil ? "display link" : "timer") }
+        if t >= 1 { finishSidebarSlide() }
+    }
+
+    private func finishSidebarSlide() {
+        stopSidebarSlide()
+        sidebarLeadingConstraint?.constant = 0
+        if !sidebarVisible { sidebarView?.isHidden = true }
+        layoutActiveTab()
+    }
+
+    private func stopSidebarSlide() {
+        sidebarLink?.invalidate()
+        sidebarLink = nil
+        sidebarTimer?.invalidate()
+        sidebarTimer = nil
+        sidebarSlide = nil
+        sidebarAnimating = false
+    }
+
+    // Eased progress of each frame of the last slide (the checks).
+    var sidebarProgress: [Double] = []
 
     func toggleFullscreen() { window.toggleFullScreen(nil) }
 

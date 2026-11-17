@@ -169,20 +169,26 @@ enum SpaceChecks {
     static func checkSidebarSlide(_ c: BrowserController, then next: @escaping () -> Void) {
         guard let page = c.activeTab?.nativeWindow else { return next() }
         let withSidebar = page.frame
+        c.sidebarProgress = []
         c.toggleSidebar()
         let without = c.contentScreenRect
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
             let mid = page.frame.minX
             check("sidebar hides with a slide", c.sidebarAnimating
                 && mid < withSidebar.minX - 1 && mid > without.minX + 1,
                 "\(withSidebar.minX) → \(mid) → \(without.minX)")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            check("…and ends with the page in its room", !c.sidebarAnimating
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            check("…in 150 ms, the page in its room", !c.sidebarAnimating
                 && page.frame.isClose(to: without) && c.sidebarView?.isHidden == true,
                 NSStringFromRect(page.frame))
+            // Ease-out: the first half of the time covers well over half the way.
+            let p = c.sidebarProgress
+            let half = p.count > 2 ? p[p.count / 2] : 0
+            check("on an ease-out curve, not linear", p.count >= 6 && half > 0.7,
+                "\(p.count) frames, half-time progress \(half)")
             c.toggleSidebar()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 check("…and back", !c.sidebarAnimating && page.frame.isClose(to: withSidebar)
                     && c.sidebarView?.isHidden == false && c.sidebarLeadingConstraint?.constant == 0,
                     NSStringFromRect(page.frame))
