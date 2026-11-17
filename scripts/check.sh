@@ -91,6 +91,25 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/pe
   echo "peek FAILED"; failed=$((failed + 1))
 fi
 
+step "sign-ins survive a restart (default profile and a space's own)"
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+cookies=build/check/cookies.log; rm -f "$cookies"
+python3 scripts/cookie-server.py "$port" "$cookies" &
+server=$!
+sleep 0.5
+rm -rf build/check/profile-persist
+for phase in setup write read; do
+  CHA_PHASE=$phase CHA_HEADLESS=1 CHA_TEST=persist CHA_TEST_PORT=$port CHA_PROFILE="$PWD/build/check/profile-persist" \
+    build/cha.app/Contents/MacOS/cha >"build/check/persist-$phase.log" 2>&1
+done
+kill "$server" 2>/dev/null
+grep '^/check' "$cookies"
+for p in default work; do
+  if ! grep -q "^/check p=$p cookies=kept=k1,session=s1$" "$cookies"; then
+    echo "persist FAILED: the $p profile lost its cookies"; failed=$((failed + 1))
+  fi
+done
+
 step "profiles: accounts per space"
 run_scenario profiles 40; code=$?
 grep -E 'CHECK ' build/check/profiles.log | sed 's/^.*cha\[[^]]*\] //'

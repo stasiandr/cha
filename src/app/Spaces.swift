@@ -299,6 +299,7 @@ extension BrowserController {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         let profile = ProfileData(name: trimmed.isEmpty ? "Profile \(profiles.count + 1)" : trimmed)
         profiles.append(profile)
+        ChaTab.prepareProfile(profile.id.uuidString)
         scheduleSave()
         return profile
     }

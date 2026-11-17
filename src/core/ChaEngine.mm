@@ -84,11 +84,11 @@ static BOOL ChaQuiet() {
 }
 - (void)terminate:(id)sender {
   fprintf(stderr, "TIMING quit-requested %.0f\n", ChaMillisSinceStart());
-  // Whatever happens below, the app is gone in 3 s: quitting must never
+  // Whatever happens below, the app is gone in 15 s (time for Chromium to write the profile out): quitting must never
   // leave a process nobody can close.
   static dispatch_once_t watchdog;
   dispatch_once(&watchdog, ^{
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
       fprintf(stderr, "TIMING quit-forced %.0f\n", ChaMillisSinceStart());
       _exit(0);
     });
@@ -203,6 +203,9 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
   CefString(&settings.root_cache_path) = root.UTF8String;
   CefString(&settings.cache_path) =
       [root stringByAppendingPathComponent:@"Default"].UTF8String;
+  // Session cookies (no expiry) are what many sites keep a sign-in in; by
+  // default Chromium drops them at quit, which signed people out.
+  settings.persist_session_cookies = true;
 
   return CefInitialize(main_args, settings, _app.get(), nullptr) ? YES : NO;
 }

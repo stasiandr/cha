@@ -87,8 +87,11 @@ class FaviconCallback : public CefDownloadImageCallback {
 
 // Client and window delegate for a single tab.
 // Profiles: each has its own Chromium profile (cookies, sign-ins, saved
-// passwords, storage) in <root>/Profiles/<id>; the default one is CEF's
-// global context, <root>/Default, as before profiles existed.
+// passwords, storage) in <root>/Profile-<id>; the default one is CEF's
+// global context, <root>/Default, as before profiles existed. Chromium only
+// keeps a profile whose folder sits right in the root, like Default: one a
+// level deeper (<root>/Profiles/<id>, as at first) silently ran in memory
+// and lost every sign-in at quit.
 NSString* ProfilesRoot() {
   NSString* root = NSProcessInfo.processInfo.environment[@"CHA_PROFILE"];
   if (root.length == 0) {
@@ -96,13 +99,34 @@ NSString* ProfilesRoot() {
         NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
     root = [support stringByAppendingPathComponent:@"cha"];
   }
-  return [root stringByAppendingPathComponent:@"Profiles"];
+  return root;
 }
 
 // What every profile gets once ready: downloads are cha's own.
+// A profile Chromium is still setting up (a new one takes seconds) can't
+// load pages yet: tabs wait for it and open once it is ready.
+std::map<std::string, bool>& ProfileReady() {
+  static std::map<std::string, bool> ready;
+  return ready;
+}
+std::map<std::string, NSMutableArray*>& ProfileWaiting() {
+  static std::map<std::string, NSMutableArray*> waiting;
+  return waiting;
+}
+
 class ProfileHandler : public CefRequestContextHandler {
  public:
+  explicit ProfileHandler(const std::string& key) : key_(key) {}
   void OnRequestContextInitialized(CefRefPtr<CefRequestContext> context) override {
+    std::string key = key_;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      ProfileReady()[key] = true;
+      NSMutableArray* waiting = ProfileWaiting()[key];
+      ProfileWaiting().erase(key);
+      for (void (^open)(void) in waiting) {
+        open();
+      }
+    });
     const std::pair<const char*, bool> prefs[] = {
         {"download_bubble.partial_view_enabled", false},
         {"download.prompt_for_download", false},
@@ -114,6 +138,8 @@ class ProfileHandler : public CefRequestContextHandler {
       context->SetPreference(name, v, error);
     }
   }
+ private:
+  std::string key_;
   IMPLEMENT_REFCOUNTING(ProfileHandler);
 };
 
@@ -127,11 +153,13 @@ CefRefPtr<CefRequestContext> ContextForProfile(NSString* profileID) {
   if (found != contexts.end()) {
     return found->second;
   }
-  NSString* path = [ProfilesRoot() stringByAppendingPathComponent:profileID];
+  NSString* path = [ProfilesRoot() stringByAppendingPathComponent:[@"Profile-" stringByAppendingString:profileID]];
   [NSFileManager.defaultManager createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
   CefRequestContextSettings settings;
   CefString(&settings.cache_path) = path.UTF8String;
-  CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, new ProfileHandler);
+  // Sign-ins that use session cookies survive a restart too.
+  settings.persist_session_cookies = true;
+  CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, new ProfileHandler(key));
   contexts[key] = context;
   return context;
 }
@@ -560,8 +588,23 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   _title = @"";
   _profileID = [profileID copy];
   _host = new TabHost(self, url.UTF8String, ScreenRectToCef(screenFrame), ContextForProfile(profileID));
-  CefWindow::CreateTopLevelWindow(_host);
+  std::string key = profileID.length ? profileID.UTF8String : "";
+  if (key.empty() || ProfileReady()[key]) {
+    CefWindow::CreateTopLevelWindow(_host);
+  } else {
+    CefRefPtr<TabHost> host = _host;
+    if (!ProfileWaiting()[key]) {
+      ProfileWaiting()[key] = [NSMutableArray array];
+    }
+    [ProfileWaiting()[key] addObject:[^{
+      CefWindow::CreateTopLevelWindow(host);
+    } copy]];
+  }
   return self;
+}
+
++ (void)prepareProfile:(nullable NSString*)profileID {
+  ContextForProfile(profileID);
 }
 
 - (nullable NSWindow*)nativeWindow {

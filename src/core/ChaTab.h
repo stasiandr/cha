@@ -48,6 +48,9 @@ NS_ASSUME_NONNULL_BEGIN
                 screenFrame:(NSRect)screenFrame
                     profile:(nullable NSString*)profileID;
 @property(nonatomic, readonly, copy, nullable) NSString* profileID;
+// Starts setting a profile up ahead of its first tab (a new one takes
+// Chromium a few seconds); tabs in a profile not ready yet wait for it.
++ (void)prepareProfile:(nullable NSString*)profileID;
 // Pinned tabs and favourites: links to other sites go to a Peek.
 @property(nonatomic) BOOL keepsItsSite;
 

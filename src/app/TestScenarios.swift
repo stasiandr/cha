@@ -164,8 +164,8 @@ enum TestScenarios {
             }
             at(11) {
                 check("space A still has its own", "who=alpha")
-                let dirs = (try? FileManager.default.contentsOfDirectory(
-                    atPath: Persistence.directory.appendingPathComponent("Profiles").path)) ?? []
+                let dirs = ((try? FileManager.default.contentsOfDirectory(atPath: Persistence.directory.path)) ?? [])
+                    .filter { $0.hasPrefix("Profile-") }
                 SpaceChecks.check("the profile has its own folder", dirs.count == 1, "\(dirs)")
                 controller.selectSpace(b, animated: false)
                 controller.navigate(to: url)
@@ -439,6 +439,52 @@ enum TestScenarios {
                 SpaceChecks.check("closing it closes the page too", LittleWindowController.open.isEmpty)
                 SpaceChecks.check("and leaves the main window alone", controller.activeSpace.tabs.count == tabsBefore + 1)
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
+        case "persist":
+            // Sign-ins survive a restart, checked the way sites do it: the
+            // server sets the cookies (a session one and a persistent one),
+            // and after a restart logs what the browser sends back
+            // (scripts/cookie-server.py). Phases on one CHA_PROFILE: setup
+            // (makes a space with its own profile), write, read.
+            let port = ProcessInfo.processInfo.environment["CHA_TEST_PORT"] ?? "0"
+            let phase = ProcessInfo.processInfo.environment["CHA_PHASE"] ?? "read"
+            let path = phase == "read" ? "check" : "set"
+            if phase == "setup" {
+                at(1) {
+                    controller.addSpace()
+                    let work = controller.activeSpaceID
+                    controller.finishEditing()
+                    controller.setProfile(controller.addProfile(named: "Work").id, for: work)
+                    controller.newTab(url: "about:blank")
+                }
+                at(6) { NSApp.terminate(nil) }
+                break
+            }
+            at(1) {
+                controller.selectSpace(controller.spaces[0].id, animated: false)
+                controller.newTab(url: "http://localhost:\(port)/\(path)?p=default")
+            }
+            at(4) {
+                controller.selectSpace(controller.spaces[1].id, animated: false)
+                controller.newTab(url: "http://localhost:\(port)/\(path)?p=work")
+            }
+            at(9) { NSApp.terminate(nil) }
+
+        case "pagewindow":
+            at(2) {
+                guard let w = controller.activeTab?.nativeWindow else { return NSLog("PAGE no window") }
+                NSLog("PAGE class=%@ styleMask=%lu titled=%d fullSize=%d opaque=%d hasShadow=%d",
+                    String(describing: type(of: w)), w.styleMask.rawValue,
+                    w.styleMask.contains(.titled) ? 1 : 0, w.styleMask.contains(.fullSizeContentView) ? 1 : 0,
+                    w.isOpaque ? 1 : 0, w.hasShadow ? 1 : 0)
+                let frameView = w.contentView?.superview
+                NSLog("PAGE frame view=%@ layer radius=%.1f masks=%d", String(describing: frameView.map { type(of: $0) }),
+                    frameView?.layer?.cornerRadius ?? -1, frameView?.layer?.masksToBounds == true ? 1 : 0)
+                for sel in ["_cornerMask", "_cornerRadius", "cornerRadius"] {
+                    if w.responds(to: NSSelectorFromString(sel)) { NSLog("PAGE responds to %@", sel) }
+                }
                 NSApp.terminate(nil)
             }
 

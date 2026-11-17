@@ -187,6 +187,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         applySpaceTint()
         installSwipeMonitor()
         window.acceptsMouseMovedEvents = true
+        // Spaces' own profiles get ready while the first page loads.
+        for profile in profiles { ChaTab.prepareProfile(profile.id.uuidString) }
         appearanceObservation = window.observe(\.effectiveAppearance) { [weak self] _, _ in
             DispatchQueue.main.async { self?.applySpaceTint(animated: false) }
         }
