@@ -429,6 +429,12 @@ enum TestScenarios {
                     "and the page is a tab of the main window, same browser",
                     controller.activeTab?.currentURL.contains("From outside") == true
                         && controller.activeSpace.tabs.count == tabsBefore + 1)
+                let page = controller.activeTab?.nativeWindow
+                SpaceChecks.check(
+                    "its window is shown in the main window, opaque, in place",
+                    page?.isVisible == true && page?.parent === controller.window && page?.alphaValue == 1
+                        && (page?.frame.isClose(to: controller.contentScreenRect) ?? false),
+                    page.map { NSStringFromRect($0.frame) } ?? "-")
                 controller.openLittleWindow("data:text/html,<title>Throwaway</title>")
             }
             at(7) {

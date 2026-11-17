@@ -179,8 +179,13 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         guard let main, let tab else { return }
         movedToMain = true
         if let native = tab.nativeWindow, native.parent != nil { window.removeChildWindow(native) }
-        main.adopt(tab, url: tab.currentURL.isEmpty ? url : tab.currentURL, title: tab.title, favicon: favicon)
+        // The little window goes first, then the page moves: closing it
+        // after the move left the page hidden to Chromium, which drew
+        // nothing until the tab was switched away and back.
+        let url = tab.currentURL.isEmpty ? self.url : tab.currentURL
+        let title = tab.title, favicon = self.favicon
         window.close()
+        main.adopt(tab, url: url, title: title, favicon: favicon)
     }
 
     func close() { window.close() }
@@ -297,11 +302,25 @@ extension BrowserController {
         replace(space)
         register(tab, as: data.id)
         if let favicon { favicons[data.id] = favicon }
-        activateTab(data.id)
+        activateTab(data.id, transition: .none)
         if !Diagnostics.quiet {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
         }
+        // What a switch to the tab does, which is what woke the page up by
+        // hand: off the screen and back, once the move has settled.
+        let id = data.id
+        DispatchQueue.main.async { [weak self] in self?.reshowPage(id) }
+    }
+
+    func reshowPage(_ id: UUID) {
+        guard activeTabID == id, let native = liveTabs[id]?.nativeWindow else { return }
+        if native.parent != nil { window.removeChildWindow(native) }
+        native.orderOut(nil)
+        showOnly(tabID: id)
+        if !Diagnostics.quiet { liveTabs[id]?.focus() }
+        NSLog("ADOPT shown: visible=%d child=%d alpha=%.1f", native.isVisible ? 1 : 0,
+            native.parent === window ? 1 : 0, native.alphaValue)
     }
 
     func openLittleWindow(_ url: String, over caller: NSRect? = nil) {
