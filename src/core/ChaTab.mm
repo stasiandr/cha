@@ -31,6 +31,7 @@
 - (void)cefRequestsNewTab:(NSString*)url;
 - (void)cefRequestsNewTab:(NSString*)url background:(BOOL)background;
 - (void)cefRequestsPeek:(NSString*)url;
+- (BOOL)cefConsoleMessage:(NSString*)message;
 - (void)cefDidFinishLoad;
 - (void)cefChanged;
 @end
@@ -370,6 +371,13 @@ class TabHost : public CefClient,
   }
 
   // CefDisplayHandler
+  // Answers to cha's own scripts come back as console messages with a
+  // marker; they are taken here and never reach the page's console.
+  bool OnConsoleMessage(CefRefPtr<CefBrowser>, cef_log_severity_t, const CefString& message,
+                        const CefString&, int) override {
+    return [tab_ cefConsoleMessage:ToNSString(message)];
+  }
+
   void OnTitleChange(CefRefPtr<CefBrowser>, const CefString& title) override {
     ChaTab* tab = tab_;
     tab.title = ToNSString(title);
@@ -509,6 +517,34 @@ CefRect ScreenRectToCef(NSRect frame) {
 @implementation ChaTab {
   CefRefPtr<TabHost> _host;
   CGFloat _cornerRadius;
+  void (^_selectionHandler)(NSString*);
+}
+
+static NSString* const kSelectionMarker = @"__cha_selection__";
+
+- (void)fetchSelection:(void (^)(NSString*))handler {
+  _selectionHandler = [handler copy];
+  // The page's selection, or the selected part of the focused field.
+  [self executeJavaScript:[NSString stringWithFormat:
+      @"(() => { const e = document.activeElement; let t = '';"
+       "try { if (e && typeof e.selectionStart === 'number' && e.value !== undefined)"
+       "  t = e.value.substring(e.selectionStart, e.selectionEnd); } catch (x) {}"
+       "if (!t) t = String(window.getSelection());"
+       "console.log('%@' + JSON.stringify(t)); })()", kSelectionMarker]];
+}
+
+- (BOOL)cefConsoleMessage:(NSString*)message {
+  if (![message hasPrefix:kSelectionMarker]) {
+    return NO;
+  }
+  NSData* json = [[message substringFromIndex:kSelectionMarker.length] dataUsingEncoding:NSUTF8StringEncoding];
+  NSString* text = [NSJSONSerialization JSONObjectWithData:json options:NSJSONReadingFragmentsAllowed error:nil];
+  void (^handler)(NSString*) = _selectionHandler;
+  _selectionHandler = nil;
+  if (handler) {
+    handler([text isKindOfClass:NSString.class] ? text : @"");
+  }
+  return YES;
 }
 
 - (instancetype)initWithURL:(NSString*)url screenFrame:(NSRect)screenFrame {

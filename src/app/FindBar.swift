@@ -38,6 +38,17 @@ extension BrowserController {
         if Diagnostics.quiet { panel.orderFront(nil) } else { panel.makeKeyAndOrderFront(nil) }
         find.focusToken += 1
         if !find.query.isEmpty { search(find.query, findNext: false) }
+        // What is selected in the page becomes the search, as in Safari and
+        // Arc; with nothing selected the last search stays.
+        activeTab?.fetchSelection { [weak self] text in
+            guard let self, self.isFindOpen else { return }
+            let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+            let query = String(line.trimmingCharacters(in: .whitespaces).prefix(200))
+            guard !query.isEmpty, query != self.find.query else { return }
+            self.find.query = query
+            self.search(query, findNext: false)
+            NSLog("FIND from selection: %@", query)
+        }
     }
 
     func closeFindBar() {

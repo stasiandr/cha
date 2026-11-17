@@ -72,6 +72,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Chrome's own commands (cef_command_ids.h), e.g. IDC_FIND = 37000.
 - (BOOL)canExecuteChromeCommand:(int)commandID;
 - (void)executeChromeCommand:(int)commandID;
+// What is selected in the page (or in its focused field), handed to
+// |handler| on the main thread; "" when nothing is.
+- (void)fetchSelection:(void (^)(NSString* text))handler;
 // Find in page through CEF, without Chrome's find bar.
 - (void)find:(NSString*)text forward:(BOOL)forward findNext:(BOOL)findNext;
 - (void)stopFinding:(BOOL)clearSelection;

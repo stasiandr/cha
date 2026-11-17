@@ -439,8 +439,18 @@ enum SpaceChecks {
                 c.newTab(url: "data:text/html,<title>Find</title><p>alpha beta gamma beta delta</p>")
             }),
             (1.2, {
+                // Something selected: ⌘F searches for it straight away.
+                c.activeTab?.executeJavaScript(
+                    "const r = document.createRange(); const p = document.querySelector('p');"
+                        + "r.setStart(p.firstChild, 6); r.setEnd(p.firstChild, 10);"
+                        + "getSelection().removeAllRanges(); getSelection().addRange(r);")
+            }),
+            (0.4, {
                 c.openFindBar()
                 check("⌘F opens the find bar", c.isFindOpen)
+            }),
+            (0.8, {
+                check("⌘F takes the selection as the search", c.find.query == "beta", c.find.query)
                 c.find.query = "beta"
                 c.search("beta", findNext: false)
             }),
