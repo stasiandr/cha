@@ -552,11 +552,16 @@ static void ChaOverrideCorners(Class cls) {
   SEL radiusSel = NSSelectorFromString(@"_cornerRadius");
   Method radius = class_getInstanceMethod(cls, radiusSel);
   if (radius) {
-    __block IMP original = method_getImplementation(radius);
     IMP replacement = imp_implementationWithBlock(^CGFloat(NSWindow* window) {
-      NSNumber* own = objc_getAssociatedObject(window, kChaCornerRadiusKey);
-      if (own) return own.doubleValue;
-      return ((CGFloat(*)(id, SEL))original)(window, radiusSel);
+      // Chromium asks this when it makes the window, before cha has set
+      // anything, and rounds the page it draws by it (the window was titled
+      // then: ~16 pt on macOS 26) until the app is switched away and back.
+      // Page windows answer cha's radius, 0 until it is set: the card's
+      // rounding is cha's own layer.
+      // Always 0: Chromium reads it rarely (at creation, on app switches),
+      // so a card's 12 stuck when the page went full screen. The card is
+      // rounded by cha's own layer, which clips whatever Chromium draws.
+      return (CGFloat)0;
     });
     class_replaceMethod(cls, radiusSel, replacement, method_getTypeEncoding(radius));
   }
@@ -564,11 +569,8 @@ static void ChaOverrideCorners(Class cls) {
   SEL maskSel = NSSelectorFromString(@"_cornerMask");
   Method mask = class_getInstanceMethod(cls, maskSel);
   if (mask) {
-    __block IMP original = method_getImplementation(mask);
     IMP replacement = imp_implementationWithBlock(^id(NSWindow* window) {
-      NSNumber* own = objc_getAssociatedObject(window, kChaCornerRadiusKey);
-      if (own && own.doubleValue <= 0) return nil;  // Square: no mask at all.
-      return ((id(*)(id, SEL))original)(window, maskSel);
+      return (id)nil;  // No system mask: the shape is the layer's.
     });
     class_replaceMethod(cls, maskSel, replacement, method_getTypeEncoding(mask));
   }
@@ -585,6 +587,15 @@ static void ChaApplyCornerRadius(NSWindow* window, CGFloat radius) {
   }
   [window invalidateShadow];
   [window display];
+}
+
+// Before any page window exists (CEF's window class is in the framework,
+// loaded by now).
+void ChaPreparePageWindowCorners() {
+  Class cls = NSClassFromString(@"CefNSWindow");
+  if (cls) {
+    ChaOverrideCorners(cls);
+  }
 }
 
 @implementation ChaTab (Downloads)
@@ -657,6 +668,10 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
     } copy]];
   }
   return self;
+}
+
++ (void)prepareWindows {
+  ChaPreparePageWindowCorners();
 }
 
 + (void)prepareProfile:(nullable NSString*)profileID {

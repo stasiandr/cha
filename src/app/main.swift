@@ -44,6 +44,7 @@ final class Launcher: NSObject, ChaEngineDelegate {
 
     func engineDidInitialize() {
         Diagnostics.mark("context-initialized")
+        ChaTab.prepareWindows()
         let controller = BrowserController()
         self.controller = controller
         NSApp.mainMenu = MainMenu.build(controller: controller)

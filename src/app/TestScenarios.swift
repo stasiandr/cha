@@ -478,6 +478,61 @@ enum TestScenarios {
             }
             at(9) { NSApp.terminate(nil) }
 
+        case "fs-corners":
+            // Real full screen without the sidebar (takes over the screen: only
+            // with the user's go-ahead). Corners checked from screen captures:
+            // the page that was open, then a tab opened in full screen.
+            let white = "data:text/html,<body style='background:rgb(250,250,250);margin:0'></body>"
+            func capture(_ name: String) -> NSBitmapImageRep? {
+                let path = "build/shots/\(name).png"
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                process.arguments = ["-x", "-D1", path]
+                try? process.run()
+                process.waitUntilExit()
+                return NSImage(contentsOfFile: path).flatMap { $0.tiffRepresentation }.flatMap(NSBitmapImageRep.init)
+            }
+            func corners(_ name: String, rounded: Bool = false) {
+                guard let rep = capture(name), let page = controller.activeTab?.nativeWindow,
+                    let screen = page.screen
+                else { return SpaceChecks.check("\(name): captured", false) }
+                let scale = CGFloat(rep.pixelsWide) / screen.frame.width
+                let f = page.frame
+                let top = Int((screen.frame.maxY - f.maxY) * scale) + 2
+                let bottom = Int((screen.frame.maxY - f.minY) * scale) - 3
+                let left = Int((f.minX - screen.frame.minX) * scale) + 2
+                let right = Int((f.maxX - screen.frame.minX) * scale) - 3
+                let points = [("top-left", left, top), ("top-right", right, top),
+                              ("bottom-left", left, bottom), ("bottom-right", right, bottom)]
+                var round: [String] = []
+                for (label, x, y) in points {
+                    let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB)
+                    if (c?.brightnessComponent ?? 0) < 0.9 || (c?.saturationComponent ?? 1) > 0.1 { round.append(label) }
+                }
+                NSLog("FS %@ styleMask=%lu radius=%.0f round=%@", name, page.styleMask.rawValue,
+                    page.contentView?.layer?.cornerRadius ?? -1, round.joined(separator: ","))
+                if rounded {
+                    SpaceChecks.check("\(name): rounded corners", round.count == 4, round.joined(separator: ","))
+                } else {
+                    SpaceChecks.check("\(name): square corners", round.isEmpty, round.joined(separator: ","))
+                }
+            }
+            at(1) { controller.newTab(url: white) }
+            at(2.2) { corners("window-card", rounded: true) }
+            at(2.5) { controller.toggleFullscreen() }
+            at(4.5) { controller.toggleSidebar() }
+            at(5.5) { corners("fs-open-tab") }
+            at(9) { controller.newTab(url: white) }
+            at(10.5) { corners("fs-new-tab") }
+            at(11) { controller.toggleSidebar() }
+            at(12) { corners("fs-with-sidebar-card", rounded: true) }
+            at(12.5) { controller.toggleFullscreen() }
+            at(14.5) { corners("window-again", rounded: true) }
+            at(15) {
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "fullscreen-real":
             // Real full screen, in a normal (visible, active) run, captured
             // from the screen: the way in, with the sidebar, without it, the

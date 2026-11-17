@@ -51,6 +51,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Starts setting a profile up ahead of its first tab (a new one takes
 // Chromium a few seconds); tabs in a profile not ready yet wait for it.
 + (void)prepareProfile:(nullable NSString*)profileID;
+// Call once before the first tab: page windows report cha's corner radius
+// to Chromium from the start.
++ (void)prepareWindows;
 // Pinned tabs and favourites: links to other sites go to a Peek.
 @property(nonatomic) BOOL keepsItsSite;
 
