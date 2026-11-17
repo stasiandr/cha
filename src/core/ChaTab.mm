@@ -1,6 +1,8 @@
 #import "ChaTab.h"
 
 #include <map>
+#import <objc/message.h>
+#import <objc/runtime.h>
 #include <string>
 
 #include "include/cef_browser.h"
@@ -531,6 +533,60 @@ CefRect ScreenRectToCef(NSRect frame) {
 
 }  // namespace
 
+// macOS draws a titled window's corners itself (CEF's page windows are
+// titled, their title bar hidden), whatever the content's layer says: the
+// page stayed rounded in full screen. The page windows' class answers the
+// window server's two questions (_cornerRadius, _cornerMask) with cha's own
+// radius instead — 0 there, 12 for the card.
+static const void* kChaCornerRadiusKey = &kChaCornerRadiusKey;
+
+static void ChaOverrideCorners(Class cls) {
+  static NSMutableSet* done;
+  if (!done) done = [NSMutableSet set];
+  NSString* name = NSStringFromClass(cls);
+  if ([done containsObject:name]) {
+    return;
+  }
+  [done addObject:name];
+
+  SEL radiusSel = NSSelectorFromString(@"_cornerRadius");
+  Method radius = class_getInstanceMethod(cls, radiusSel);
+  if (radius) {
+    __block IMP original = method_getImplementation(radius);
+    IMP replacement = imp_implementationWithBlock(^CGFloat(NSWindow* window) {
+      NSNumber* own = objc_getAssociatedObject(window, kChaCornerRadiusKey);
+      if (own) return own.doubleValue;
+      return ((CGFloat(*)(id, SEL))original)(window, radiusSel);
+    });
+    class_replaceMethod(cls, radiusSel, replacement, method_getTypeEncoding(radius));
+  }
+
+  SEL maskSel = NSSelectorFromString(@"_cornerMask");
+  Method mask = class_getInstanceMethod(cls, maskSel);
+  if (mask) {
+    __block IMP original = method_getImplementation(mask);
+    IMP replacement = imp_implementationWithBlock(^id(NSWindow* window) {
+      NSNumber* own = objc_getAssociatedObject(window, kChaCornerRadiusKey);
+      if (own && own.doubleValue <= 0) return nil;  // Square: no mask at all.
+      return ((id(*)(id, SEL))original)(window, maskSel);
+    });
+    class_replaceMethod(cls, maskSel, replacement, method_getTypeEncoding(mask));
+  }
+}
+
+static void ChaApplyCornerRadius(NSWindow* window, CGFloat radius) {
+  if (!window) return;
+  ChaOverrideCorners(window.class);
+  objc_setAssociatedObject(window, kChaCornerRadiusKey, @(radius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  // Have the window server ask again.
+  SEL update = NSSelectorFromString(@"_updateCornerMask");
+  if ([window respondsToSelector:update]) {
+    ((void(*)(id, SEL))objc_msgSend)(window, update);
+  }
+  [window invalidateShadow];
+  [window display];
+}
+
 @implementation ChaTab (Downloads)
 + (void)cancelDownload:(uint32_t)downloadID {
   auto& callbacks = DownloadCallbacks();
@@ -716,6 +772,7 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   NSWindow* native = self.nativeWindow;
   native.contentView.wantsLayer = YES;
   native.contentView.layer.cornerRadius = radius;
+  ChaApplyCornerRadius(native, radius);
 }
 
 - (void)close {
@@ -734,12 +791,17 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   native.excludedFromWindowsMenu = YES;
   native.movable = NO;
   native.movableByWindowBackground = NO;
-  native.styleMask &= ~NSWindowStyleMaskResizable;
+  // Borderless: macOS's window server rounds a titled window's corners on its
+  // own (CEF's frameless windows are titled with the bar hidden), and no layer
+  // or mask setting undoes it — the page stayed rounded in full screen. The
+  // card's rounding is the content layer's (setCornerRadius:).
+  native.styleMask = NSWindowStyleMaskBorderless;
   native.hasShadow = NO;
   native.backgroundColor = NSColor.clearColor;
   native.opaque = NO;
   native.contentView.wantsLayer = YES;
   native.contentView.layer.cornerRadius = _cornerRadius;
+  ChaApplyCornerRadius(native, _cornerRadius);
   native.contentView.layer.masksToBounds = YES;
   [self.delegate tabDidBecomeReady:self];
 }

@@ -180,7 +180,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         // Only now, with the sidebar in place, may resizes reach us; the
         // saved frame is restored here for the same reason.
         window.delegate = self
-        if !Diagnostics.quiet { window.setFrameAutosaveName("cha.main") }
+        // A check run must not move the real window's saved frame.
+        if !Diagnostics.quiet, ProcessInfo.processInfo.environment["CHA_TEST"] == nil {
+            window.setFrameAutosaveName("cha.main")
+        }
         followWindowWidth()
         window.placeTrafficLights()
         Diagnostics.mark("window")

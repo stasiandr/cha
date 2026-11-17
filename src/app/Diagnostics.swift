@@ -69,7 +69,10 @@ final class BrowserWindow: NSWindow {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         // Off screen (headless) or on a chosen display (CHA_SCREEN): the
         // frame stands as set, not pulled back onto the main display.
-        Diagnostics.quiet ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+        // In full screen the window is the whole screen, menu bar's strip
+        // included; AppKit would hold it to the visible frame below it.
+        if Diagnostics.quiet || styleMask.contains(.fullScreen) { return frameRect }
+        return super.constrainFrameRect(frameRect, to: screen)
     }
 
     // Arc sets the traffic lights lower and further in than AppKit does, on

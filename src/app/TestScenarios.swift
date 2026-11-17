@@ -472,6 +472,68 @@ enum TestScenarios {
             }
             at(9) { NSApp.terminate(nil) }
 
+        case "fullscreen-real":
+            // Real full screen, in a normal (visible, active) run, captured
+            // from the screen: the way in, with the sidebar, without it, the
+            // way out. Only when the user is fine with the screen taken over.
+            var step = 0
+            func capture(_ name: String) {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                process.arguments = ["-x", "-D1", "build/shots/\(name).png"]
+                try? process.run()
+                process.waitUntilExit()
+                step += 1
+            }
+            func state(_ label: String) {
+                NSLog("FS %@ fullscreen=%d sidebar=%d page=%@ radius=%.1f", label, controller.isFullscreen ? 1 : 0,
+                    controller.sidebarVisible ? 1 : 0,
+                    NSStringFromRect(controller.activeTab?.nativeWindow?.frame ?? .zero),
+                    controller.activeTab?.nativeWindow?.contentView?.layer?.cornerRadius ?? -1)
+            }
+            at(1) { controller.newTab(url: "data:text/html,<body style='background:rgb(250,250,250);margin:0'><h1 style='margin:40px'>page</h1></body>") }
+            at(3) { controller.toggleFullscreen() }
+            at(3.06) { capture("fs-enter-1") }
+            at(3.14) { capture("fs-enter-2") }
+            at(5) { state("in"); capture("fs-sidebar") }
+            at(5.5) { controller.toggleSidebar() }
+            at(6.5) {
+                state("no sidebar"); capture("fs-nosidebar")
+                guard let w = controller.activeTab?.nativeWindow else { return }
+                let r = w.value(forKey: "_cornerRadius") as? CGFloat ?? -1
+                NSLog("FS window class=%@ _cornerRadius=%.1f mask=%@ frame=%@ canBecomeKey=%d isKey=%d", String(describing: type(of: w)), r,
+                    String(describing: w.value(forKey: "_cornerMask")), NSStringFromRect(w.frame),
+                    w.canBecomeKey ? 1 : 0, w.isKeyWindow ? 1 : 0)
+                func walk(_ layer: CALayer, _ depth: Int, _ path: String) {
+                    if layer.cornerRadius > 0 || layer.mask != nil {
+                        NSLog("FS layer %@ %@ radius=%.1f masks=%d mask=%@ curve=%@ frame=%@", path,
+                            String(describing: type(of: layer)), layer.cornerRadius, layer.masksToBounds ? 1 : 0,
+                            String(describing: layer.mask.map { type(of: $0) }), layer.cornerCurve.rawValue,
+                            NSStringFromRect(layer.frame))
+                    }
+                    for (i, sub) in (layer.sublayers ?? []).enumerated() where depth < 12 {
+                        walk(sub, depth + 1, path + "/\(i)")
+                    }
+                }
+                if let root = w.contentView?.superview?.layer { walk(root, 0, "frame") }
+                if let main = controller.window.contentView?.superview?.layer {
+                    NSLog("FS main window: walking"); walk(main, 0, "main")
+                }
+            }
+            at(6.8) {
+                if let w = controller.activeTab?.nativeWindow {
+                    w.setFrame(w.frame.insetBy(dx: 40, dy: 30), display: true)
+                }
+            }
+            at(7.2) { capture("fs-moved") }
+            at(7.4) {
+                controller.toggleSidebar()
+                controller.toggleFullscreen()
+            }
+            at(7.46) { capture("fs-exit-1") }
+            at(7.54) { capture("fs-exit-2") }
+            at(9) { state("out"); capture("fs-window"); NSApp.terminate(nil) }
+
         case "pagewindow":
             at(2) {
                 guard let w = controller.activeTab?.nativeWindow else { return NSLog("PAGE no window") }
