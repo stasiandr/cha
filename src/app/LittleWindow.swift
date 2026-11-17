@@ -50,7 +50,14 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
             return (screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? screens[0]).visibleFrame
         }()
         let centre = NSPoint(x: anchor.midX, y: anchor.midY)
-        let screen = (screens.first { $0.frame.contains(centre) } ?? NSScreen.main ?? screens[0]).visibleFrame
+        // The screen holding most of that window (its centre may sit right
+        // on a screen's edge).
+        func overlap(_ s: NSScreen) -> CGFloat {
+            let i = s.frame.intersection(anchor)
+            return i.isNull ? 0 : i.width * i.height
+        }
+        let screen = (screens.max { overlap($0) < overlap($1) }.flatMap { overlap($0) > 0 ? $0 : nil }
+            ?? NSScreen.main ?? screens[0]).visibleFrame
         var size = NSSize(width: min(960, anchor.width * 0.9), height: min(700, anchor.height * 0.9))
         size.width = min(max(size.width, 420), screen.width)
         size.height = min(max(size.height, 300), screen.height)
