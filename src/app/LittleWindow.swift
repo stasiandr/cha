@@ -27,8 +27,10 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
 
     // The window for |url|, centred on the screen under the pointer.
     @discardableResult
-    static func show(_ url: String, main: BrowserController) -> LittleWindowController {
-        let little = LittleWindowController(url: url, main: main)
+    static func show(_ url: String, main: BrowserController, over caller: NSRect? = nil)
+        -> LittleWindowController
+    {
+        let little = LittleWindowController(url: url, main: main, over: caller)
         open.append(little)
         return little
     }
@@ -39,15 +41,31 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         return open.first { $0.window === keyWindow || $0.window === keyWindow.parent }
     }
 
-    private init(url: String, main: BrowserController) {
+    // Where it opens: centred over the window the link came from, at most
+    // 960×700 and 90 % of that window (420×300 at least), kept on that
+    // window's screen. Without one, centred on the screen under the pointer.
+    static func frame(over caller: NSRect?, screens: [NSScreen] = NSScreen.screens) -> NSRect {
+        let anchor = caller ?? {
+            let mouse = NSEvent.mouseLocation
+            return (screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? screens[0]).visibleFrame
+        }()
+        let centre = NSPoint(x: anchor.midX, y: anchor.midY)
+        let screen = (screens.first { $0.frame.contains(centre) } ?? NSScreen.main ?? screens[0]).visibleFrame
+        var size = NSSize(width: min(960, anchor.width * 0.9), height: min(700, anchor.height * 0.9))
+        size.width = min(max(size.width, 420), screen.width)
+        size.height = min(max(size.height, 300), screen.height)
+        var frame = NSRect(
+            x: centre.x - size.width / 2, y: centre.y - size.height / 2, width: size.width,
+            height: size.height)
+        frame.origin.x = min(max(frame.minX, screen.minX), screen.maxX - frame.width)
+        frame.origin.y = min(max(frame.minY, screen.minY), screen.maxY - frame.height)
+        return frame.integral
+    }
+
+    private init(url: String, main: BrowserController, over caller: NSRect?) {
         self.url = url
         self.main = main
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
-        let size = NSSize(width: min(960, screen.visibleFrame.width * 0.7), height: min(700, screen.visibleFrame.height * 0.8))
-        let frame = NSRect(
-            x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2,
-            width: size.width, height: size.height)
+        let frame = Self.frame(over: caller)
         window = BrowserWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -279,7 +297,7 @@ extension BrowserController {
         }
     }
 
-    func openLittleWindow(_ url: String) {
-        LittleWindowController.show(url, main: self)
+    func openLittleWindow(_ url: String, over caller: NSRect? = nil) {
+        LittleWindowController.show(url, main: self, over: caller)
     }
 }

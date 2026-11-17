@@ -385,6 +385,20 @@ enum TestScenarios {
                     little?.window.collectionBehavior.contains(.fullScreenAuxiliary) == true
                         && little?.window.collectionBehavior.contains(.moveToActiveSpace) == true)
                 if let little { TestScenarios.shotWindow(little.window, "little-window") }
+                // Placement over the calling app's window.
+                if let screen = NSScreen.screens.first?.visibleFrame {
+                    let caller = NSRect(x: screen.minX + 60, y: screen.minY + 80, width: 900, height: 600)
+                    let placed = LittleWindowController.frame(over: caller)
+                    SpaceChecks.check(
+                        "a little window opens centred over the calling app's window",
+                        abs(placed.midX - caller.midX) <= 1 && abs(placed.midY - caller.midY) <= 1
+                            && placed.width <= caller.width && placed.height <= caller.height,
+                        NSStringFromRect(placed))
+                    let corner = NSRect(x: screen.maxX - 150, y: screen.maxY - 120, width: 300, height: 200)
+                    let kept = LittleWindowController.frame(over: corner)
+                    SpaceChecks.check(
+                        "and stays on that screen", screen.contains(kept), NSStringFromRect(kept))
+                }
                 SpaceChecks.check(
                     "the page's window can't be moved or resized on its own",
                     little.map { l in

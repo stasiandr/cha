@@ -27,7 +27,40 @@ final class URLOpener: NSObject {
 
     @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
         guard let url = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue else { return }
+        // Who sent the link: its window is where the little window goes.
+        let sender = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value
+        callerFrame = Self.frontWindowFrame(of: sender.map { pid_t($0) })
         open(url)
+    }
+
+    // The app the link came from and its front window, in AppKit screen
+    // coordinates: the sender of the event, else the app in front then.
+    private(set) var callerFrame: NSRect?
+
+    static func frontWindowFrame(of pid: pid_t?) -> NSRect? {
+        let own = ProcessInfo.processInfo.processIdentifier
+        var candidates: [pid_t] = []
+        if let pid, pid > 0, pid != own { candidates.append(pid) }
+        if let front = NSWorkspace.shared.frontmostApplication?.processIdentifier, front != own {
+            candidates.append(front)
+        }
+        guard
+            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else { return nil }
+        let top = NSScreen.screens.first?.frame.maxY ?? 0
+        for pid in candidates {
+            // The list is front to back: the first normal, sizeable window.
+            for info in list {
+                guard (info[kCGWindowOwnerPID as String] as? pid_t) == pid,
+                    (info[kCGWindowLayer as String] as? Int) == 0,
+                    let b = info[kCGWindowBounds as String] as? [String: CGFloat],
+                    let w = b["Width"], let h = b["Height"], w >= 200, h >= 150
+                else { continue }
+                return NSRect(x: b["X"] ?? 0, y: top - (b["Y"] ?? 0) - h, width: w, height: h)
+            }
+        }
+        return nil
     }
 
     @objc func handleOpenDocuments(
@@ -63,7 +96,8 @@ final class URLOpener: NSObject {
         pending = []
         // Like Little Arc: each link opens in a little window over the app
         // it came from; "Open in cha" moves it into the main window.
-        for url in urls { controller.openLittleWindow(url) }
+        for url in urls { controller.openLittleWindow(url, over: callerFrame) }
+        callerFrame = nil
         NSLog("OPENED %@", urls.joined(separator: " "))
     }
 
