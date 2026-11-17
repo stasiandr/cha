@@ -66,9 +66,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var commandMode: CommandMode = .newTab
     var commandBarOpens = 0  // How many times it opened (the checks).
     var commandKeyMonitor: Any?
-    var revealMonitor: Any?
     var pinning = false
-    var topReveal = false
     var swipeMonitor: Any?
     var swipe = SwipeTracker()
     private var appearanceObservation: NSKeyValueObservation?
@@ -188,7 +186,6 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Diagnostics.mark("window")
         applySpaceTint()
         installSwipeMonitor()
-        installRevealMonitor()
         window.acceptsMouseMovedEvents = true
         appearanceObservation = window.observe(\.effectiveAppearance) { [weak self] _, _ in
             DispatchQueue.main.async { self?.applySpaceTint(animated: false) }
@@ -200,25 +197,27 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     static let contentCornerRadius: CGFloat = 12
 
     // Where a tab's window sits, in the main window's own coordinates.
-    // In a window the page is a card with a margin; in full screen it runs
-    // to the screen's edges (and the sidebar's), no margin, no corners.
+    // The page is a card with a margin and rounded corners, in a window and
+    // in full screen alike, while the sidebar shows. Full screen with the
+    // sidebar hidden is the page alone: every edge, no corners.
+    var pageFillsScreen: Bool { isFullscreen && !sidebarVisible }
+
     var contentLocalRect: NSRect {
         guard let content = window?.contentView else { return .zero }
-        let inset = isFullscreen ? 0 : Self.contentInset
+        let inset = pageFillsScreen ? 0 : Self.contentInset
         let left = sidebarVisible ? sidebarWidth : inset
-        let top = isFullscreen && topReveal ? Self.revealHeight : inset
         return NSRect(
             x: left, y: inset,
             width: max(content.bounds.width - left - inset, 100),
-            height: max(content.bounds.height - inset - top, 100))
+            height: max(content.bounds.height - 2 * inset, 100))
     }
 
-    var pageCornerRadius: CGFloat { isFullscreen ? 0 : Self.contentCornerRadius }
+    var pageCornerRadius: CGFloat { pageFillsScreen ? 0 : Self.contentCornerRadius }
 
     // Corners and shadow follow the mode, on the card and every page.
     func applyPageShape() {
         contentWell?.layer?.cornerRadius = pageCornerRadius
-        contentWell?.layer?.shadowOpacity = isFullscreen ? 0 : 0.22
+        contentWell?.layer?.shadowOpacity = pageFillsScreen ? 0 : 0.22
         for tab in liveTabs.values { tab.setCornerRadius(pageCornerRadius) }
     }
 
@@ -288,52 +287,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     // The traffic lights go with the sidebar in a window. In full screen
     // they stay: macOS shows them with the menu bar when the pointer reaches
-    // the top, and the page makes room for them then (topReveal).
+    // the top.
     func updateTrafficLights() {
         browserWindow?.trafficLightsHidden = !isFullscreen && !sidebarVisible
-    }
-
-    // MARK: Full screen: making room for the menu bar
-
-    static let revealHeight: CGFloat = 32
-
-    // In full screen the page runs to the top edge, over the strip where
-    // macOS slides in the window's buttons. When the pointer goes up there
-    // the page steps down, and back up once the pointer leaves.
-    func installRevealMonitor() {
-        guard revealMonitor == nil else { return }
-        revealMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) {
-            [weak self] event in
-            self?.trackReveal()
-            return event
-        }
-    }
-
-    func trackReveal() {
-        guard isFullscreen, let screen = window?.screen?.frame else {
-            if topReveal { setTopReveal(false) }
-            return
-        }
-        let y = NSEvent.mouseLocation.y
-        if !topReveal, y >= screen.maxY - 2 {
-            setTopReveal(true)
-        } else if topReveal, y < screen.maxY - Self.revealHeight - 40 {
-            setTopReveal(false)
-        }
-    }
-
-    func setTopReveal(_ reveal: Bool) {
-        guard reveal != topReveal else { return }
-        topReveal = reveal
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            if let id = activeTabID, let native = liveTabs[id]?.nativeWindow {
-                native.animator().setFrame(contentScreenRect, display: true)
-            }
-        }
-        layoutContentWell()
-        repositionFindBar()
     }
 
     func windowWillEnterFullScreen(_ notification: Notification) {
@@ -410,7 +366,6 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func windowDidExitFullScreen(_ notification: Notification) {
         isFullscreen = false
-        topReveal = false
         updateTrafficLights()
         applyPageShape()
         layoutActiveTab()
@@ -945,6 +900,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         sidebarVisible.toggle()
         sidebarView?.isHidden = !sidebarVisible
         updateTrafficLights()
+        applyPageShape()
         layoutActiveTab()
     }
 

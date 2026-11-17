@@ -113,36 +113,36 @@ enum SpaceChecks {
     // display): the page's rectangle and shape for both modes.
     static func checkFullscreenShape(_ c: BrowserController) {
         guard let content = c.window.contentView else { return }
+        let inset = BrowserController.contentInset
+        func radius() -> CGFloat? { c.activeTab?.nativeWindow?.contentView?.layer?.cornerRadius }
+
         c.isFullscreen = true
-        c.applyPageShape()
-        c.updateTrafficLights()
-        let full = c.contentLocalRect
-        check(
-            "full screen: the page runs to the edges",
-            full.minX == c.sidebarWidth && full.minY == 0 && full.maxX == content.bounds.width
-                && full.maxY == content.bounds.height,
-            NSStringFromRect(full))
-        check("full screen: no corners", c.activeTab?.nativeWindow?.contentView?.layer?.cornerRadius == 0)
-        check("full screen: the window's buttons are kept", c.browserWindow?.standardWindowButton(.closeButton)?.isHidden == false)
-        c.topReveal = true
-        let revealed = c.contentLocalRect
-        check(
-            "full screen: the page makes room for the menu bar's strip",
-            revealed.maxY == content.bounds.height - BrowserController.revealHeight, NSStringFromRect(revealed))
-        c.topReveal = false
-        c.isFullscreen = false
         c.applyPageShape()
         c.updateTrafficLights()
         let card = c.contentLocalRect
         check(
-            "window: the page is a card with a margin",
-            card.minY == BrowserController.contentInset
-                && card.maxX == content.bounds.width - BrowserController.contentInset,
+            "full screen, sidebar shown: a card with margins",
+            card.minX == c.sidebarWidth && card.minY == inset && card.maxX == content.bounds.width - inset
+                && card.maxY == content.bounds.height - inset,
             NSStringFromRect(card))
+        check("full screen, sidebar shown: rounded corners", radius() == BrowserController.contentCornerRadius)
+        check("full screen: the window's buttons are kept", c.browserWindow?.standardWindowButton(.closeButton)?.isHidden == false)
+
+        c.toggleSidebar()
+        let full = c.contentLocalRect
+        check("full screen, sidebar hidden: the page fills the screen", full == content.bounds, NSStringFromRect(full))
+        check("full screen, sidebar hidden: no corners", radius() == 0)
+        c.toggleSidebar()
+        check("sidebar back: corners back", radius() == BrowserController.contentCornerRadius)
+
+        c.isFullscreen = false
+        c.applyPageShape()
+        c.updateTrafficLights()
+        let window = c.contentLocalRect
         check(
-            "window: rounded corners",
-            c.activeTab?.nativeWindow?.contentView?.layer?.cornerRadius
-                == BrowserController.contentCornerRadius)
+            "window: the page is a card with a margin",
+            window.minY == inset && window.maxX == content.bounds.width - inset, NSStringFromRect(window))
+        check("window: rounded corners", radius() == BrowserController.contentCornerRadius)
     }
 
     // ⌘W on everything: today's tabs close one by one, then nothing is open;
