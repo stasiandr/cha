@@ -321,6 +321,27 @@ enum TestScenarios {
             at(7) { listWindows("after IDC_FIND") }
             at(8) { NSApp.terminate(nil) }
 
+        case "media":
+            // What the page side can play: codecs and DRM, as a site sees them.
+            let probe = """
+                (async () => {
+                  const v = document.createElement('video'), r = [];
+                  for (const [n, t] of [['h264', 'video/mp4; codecs="avc1.42E01E"'], ['aac', 'audio/mp4; codecs="mp4a.40.2"'],
+                      ['hevc', 'video/mp4; codecs="hvc1.1.6.L93.B0"'], ['vp9', 'video/webm; codecs="vp9"'],
+                      ['av1', 'video/mp4; codecs="av01.0.05M.08"'], ['opus', 'audio/webm; codecs="opus"']])
+                    r.push(n + '=' + (v.canPlayType(t) || 'no') + '/' + (window.MediaSource ? MediaSource.isTypeSupported(t) : '-'));
+                  for (const ks of ['com.widevine.alpha', 'org.w3.clearkey']) {
+                    try { await navigator.requestMediaKeySystemAccess(ks, [{videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}, {contentType: 'video/webm; codecs="vp9"'}]}]); r.push(ks + '=yes'); }
+                    catch (e) { r.push(ks + '=no(' + e.name + ')'); } }
+                  document.title = 'MEDIA ' + r.join(' ');
+                })()
+                """
+            at(1) { controller.newTab(url: "https://example.com/") }
+            at(5) { controller.activeTab?.executeJavaScript(probe) }
+            at(25) { controller.activeTab?.executeJavaScript(probe) }
+            at(8) { NSLog("%@", controller.activeTab?.title ?? "-") }
+            at(28) { NSLog("%@", controller.activeTab?.title ?? "-"); NSApp.terminate(nil) }
+
         case "pip":
             // Picture in picture without opening the floating window (it
             // would land on the screen in use): the user-gesture path, and
