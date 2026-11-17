@@ -17,6 +17,7 @@ extension BrowserController {
             window.addChildWindow(panel, ordered: .above)
         }
         panel.makeKeyAndOrderFront(nil)
+        commandFocusToken += 1
         installCommandKeyMonitor()
     }
 

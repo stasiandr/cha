@@ -65,6 +65,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     let find = FindModel()
     var commandMode: CommandMode = .newTab
     var commandBarOpens = 0  // How many times it opened (the checks).
+    @Published var commandFocusToken = 0  // Bumped to focus and select the field.
     var commandKeyMonitor: Any?
     var pinning = false
     var swipeMonitor: Any?

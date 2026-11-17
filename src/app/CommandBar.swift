@@ -69,6 +69,20 @@ struct CommandBarView: View {
     @ObservedObject var controller: BrowserController
     @FocusState private var focused: Bool
 
+    // ⌘L opens on the page's address with all of it selected: typing
+    // replaces it. (Every opening, not only the first, which onAppear is.)
+    private func focusAndSelectAll() {
+        focused = true
+        DispatchQueue.main.async {
+            guard let panel = controller.commandPanel else { return }
+            if let editor = panel.firstResponder as? NSTextView {
+                editor.selectAll(nil)
+            } else {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -109,7 +123,8 @@ struct CommandBarView: View {
         // The card hangs from the top of a fixed-size panel; the rest of the
         // panel is empty and lets clicks through.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onAppear { focused = true }
+        .onAppear { focusAndSelectAll() }
+        .onChange(of: controller.commandFocusToken) { _, _ in focusAndSelectAll() }
     }
 
     private func row(_ result: CommandResult, selected: Bool) -> some View {
