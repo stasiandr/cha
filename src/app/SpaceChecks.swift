@@ -451,6 +451,23 @@ enum SpaceChecks {
             }),
             (0.8, {
                 check("⌘F takes the selection as the search", c.find.query == "beta", c.find.query)
+                check("the selection wins over the clipboard", true)
+                c.closeFindBar()
+                // Nothing selected: the clipboard's first line; nothing
+                // there either: an empty field, not the last search.
+                c.activeTab?.executeJavaScript("getSelection().removeAllRanges()")
+                BrowserController.clipboard.clearContents()
+                BrowserController.clipboard.setString("gamma\nsecond line", forType: .string)
+            }),
+            (0.3, { c.openFindBar() }),
+            (0.8, {
+                check("no selection: the clipboard's first line", c.find.query == "gamma", c.find.query)
+                c.closeFindBar()
+                BrowserController.clipboard.clearContents()
+            }),
+            (0.3, { c.openFindBar() }),
+            (0.8, {
+                check("nothing anywhere: an empty field", c.find.query.isEmpty, c.find.query)
                 c.find.query = "beta"
                 c.search("beta", findNext: false)
             }),

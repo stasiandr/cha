@@ -36,19 +36,37 @@ extension BrowserController {
         panel.setFrame(findFrame, display: true)
         if panel.parent == nil { window.addChildWindow(panel, ordered: .above) }
         if Diagnostics.quiet { panel.orderFront(nil) } else { panel.makeKeyAndOrderFront(nil) }
-        find.focusToken += 1
-        if !find.query.isEmpty { search(find.query, findNext: false) }
-        // What is selected in the page becomes the search, as in Safari and
-        // Arc; with nothing selected the last search stays.
+        // What the search starts with: the page's selection, else what is
+        // on the clipboard, else nothing. The clipboard goes in at once; the
+        // page answers a moment later and its selection, if any, wins.
+        // Whatever is in the field is selected, so typing or pasting
+        // replaces it.
+        let clipboard = Self.searchLine(Self.clipboard.string(forType: .string) ?? "")
+        setFindQuery(clipboard, source: clipboard.isEmpty ? "nothing" : "clipboard")
         activeTab?.fetchSelection { [weak self] text in
             guard let self, self.isFindOpen else { return }
-            let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-            let query = String(line.trimmingCharacters(in: .whitespaces).prefix(200))
-            guard !query.isEmpty, query != self.find.query else { return }
-            self.find.query = query
-            self.search(query, findNext: false)
-            NSLog("FIND from selection: %@", query)
+            let selection = Self.searchLine(text)
+            guard !selection.isEmpty, selection != self.find.query else { return }
+            self.setFindQuery(selection, source: "selection")
         }
+    }
+
+    // The clipboard the search reads; checks use a private one, never the
+    // user's.
+    static var clipboard: NSPasteboard =
+        UIFrames.enabled ? NSPasteboard(name: NSPasteboard.Name("cha.checks.clipboard")) : .general
+
+    // First line, trimmed, at most 200 characters.
+    static func searchLine(_ text: String) -> String {
+        let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        return String(line.trimmingCharacters(in: .whitespaces).prefix(200))
+    }
+
+    private func setFindQuery(_ query: String, source: String) {
+        find.query = query
+        find.focusToken += 1  // Focus and select everything in the field.
+        search(query, findNext: false)
+        NSLog("FIND from %@: %@", source, query)
     }
 
     func closeFindBar() {
@@ -145,8 +163,22 @@ struct FindBarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .onChange(of: model.focusToken) { _, _ in focused = true }
-        .onAppear { focused = true }
+        .onChange(of: model.focusToken) { _, _ in focusAndSelectAll() }
+        .onAppear { focusAndSelectAll() }
+    }
+
+    // Focus the field and select all of it, once SwiftUI has put the text
+    // in: a new search replaces it instead of adding to its end.
+    private func focusAndSelectAll() {
+        focused = true
+        DispatchQueue.main.async {
+            guard let panel = controller.findPanel else { return }
+            if let editor = panel.firstResponder as? NSTextView {
+                editor.selectAll(nil)
+            } else {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
+        }
     }
 
     private var counter: String {
