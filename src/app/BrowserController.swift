@@ -58,6 +58,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // view — the sidebar's width was then held by nothing and the page and
     // the sidebar drifted apart.)
     var sidebarWidthConstraint: NSLayoutConstraint?
+    // Slides the sidebar out to the left (−width) and back.
+    var sidebarLeadingConstraint: NSLayoutConstraint?
+    var sidebarAnimating = false
+    static let sidebarDuration: TimeInterval = 0.3
     var commandPanel: CommandPanel?
     var findPanel: CommandPanel?
     var peek: PeekController?
@@ -136,6 +140,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let sidebar = NSHostingView(rootView: SidebarView(controller: self))
         let widthConstraint = sidebar.widthAnchor.constraint(equalToConstant: sidebarWidth)
         sidebarWidthConstraint = widthConstraint
+        let leading = sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor)
+        sidebarLeadingConstraint = leading
         // The width is ours (sidebarWidth, which follows the window); left to
         // itself the hosting view pins its width to the SwiftUI content's
         // size, wins against the width constraint, and the page and the
@@ -145,7 +151,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(sidebar)
         NSLayoutConstraint.activate([
-            sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            leading,
             sidebar.topAnchor.constraint(equalTo: background.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor),
             widthConstraint,
@@ -564,7 +570,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             NotificationCenter.default.addObserver(forName: name, object: native, queue: .main) {
                 [weak self, weak native] _ in
                 guard let self, let native, !self.pinning, native === self.activeTab?.nativeWindow,
-                    native.parent != nil, !self.pageAnimating, self.window?.inLiveResize == false,
+                    native.parent != nil, !self.pageAnimating, !self.sidebarAnimating,
+                    self.window?.inLiveResize == false,
                     native.alphaValue > 0.99
                 else { return }
                 let target = self.contentScreenRect
@@ -941,13 +948,59 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if abs(target - sidebarWidth) >= 1 { applySidebarWidth(target) }
     }
 
-    func toggleSidebar() {
-        sidebarVisible.toggle()
-        sidebarView?.isHidden = !sidebarVisible
+    // The sidebar slides out to the left while the page widens into its
+    // place, and back, in 300 ms. The page's shape (card or whole screen) and
+    // the traffic lights change at the start.
+    func toggleSidebar(animated: Bool = true) {
+        let showing = !sidebarVisible
+        guard animated, let sidebar = sidebarView, let leading = sidebarLeadingConstraint, window != nil
+        else {
+            sidebarGeneration += 1
+            sidebarAnimating = false
+            sidebarLeadingConstraint?.constant = 0
+            sidebarVisible = showing
+            sidebarView?.isHidden = !showing
+            updateTrafficLights()
+            applyPageShape()
+            window?.contentView?.layoutSubtreeIfNeeded()
+            layoutActiveTab()
+            return
+        }
+        sidebarAnimating = true
+        sidebarGeneration += 1
+        let generation = sidebarGeneration
+        if showing {
+            leading.constant = -sidebarWidth
+            sidebar.isHidden = false
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+        sidebarVisible = showing
         updateTrafficLights()
         applyPageShape()
-        layoutActiveTab()
+        layoutContentWell()
+        repositionFindBar()
+        peek?.layout()
+        let page = activeTab?.nativeWindow
+        let target = contentScreenRect
+        let finish: () -> Void = { [weak self] in
+            guard let self, self.sidebarGeneration == generation, self.sidebarAnimating else { return }
+            self.sidebarAnimating = false
+            if !self.sidebarVisible { sidebar.isHidden = true }
+            leading.constant = 0
+            self.layoutActiveTab()
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.sidebarDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.allowsImplicitAnimation = true
+            leading.animator().constant = showing ? 0 : -sidebarWidth
+            page?.animator().setFrame(target, display: true)
+            window.contentView?.layoutSubtreeIfNeeded()
+        } completionHandler: { finish() }
+        // Finishes on a timer too, should the completion never come.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.sidebarDuration + 0.05, execute: finish)
     }
+    private var sidebarGeneration = 0
 
     func toggleFullscreen() { window.toggleFullScreen(nil) }
 

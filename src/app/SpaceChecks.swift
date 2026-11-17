@@ -48,9 +48,9 @@ enum SpaceChecks {
             abs(center.x - BrowserWindow.trafficLightCenter.x) < 1.5
                 && abs(center.y - BrowserWindow.trafficLightCenter.y) < 1.5,
             NSStringFromPoint(center))
-        c.toggleSidebar()
+        c.toggleSidebar(animated: false)
         check("traffic lights hide with the sidebar", close.isHidden)
-        c.toggleSidebar()
+        c.toggleSidebar(animated: false)
         check("and come back", !close.isHidden)
 
         let before = c.sidebarWidth
@@ -128,11 +128,11 @@ enum SpaceChecks {
         check("full screen, sidebar shown: rounded corners", radius() == BrowserController.contentCornerRadius)
         check("full screen: the window's buttons are kept", c.browserWindow?.standardWindowButton(.closeButton)?.isHidden == false)
 
-        c.toggleSidebar()
+        c.toggleSidebar(animated: false)
         let full = c.contentLocalRect
         check("full screen, sidebar hidden: the page fills the screen", full == content.bounds, NSStringFromRect(full))
         check("full screen, sidebar hidden: no corners", radius() == 0)
-        c.toggleSidebar()
+        c.toggleSidebar(animated: false)
         check("sidebar back: corners back", radius() == BrowserController.contentCornerRadius)
 
         c.isFullscreen = false
@@ -162,6 +162,33 @@ enum SpaceChecks {
         check("pinned tabs are still there", !c.activeSpace.pinnedTabs.isEmpty)
         c.closeActiveTab()
         check("⌘W with nothing open does nothing", c.activeTabID == nil)
+    }
+
+    // The sidebar slides: half way the page is between its two places, at
+    // the end it fills the freed room and the sidebar is hidden; and back.
+    static func checkSidebarSlide(_ c: BrowserController, then next: @escaping () -> Void) {
+        guard let page = c.activeTab?.nativeWindow else { return next() }
+        let withSidebar = page.frame
+        c.toggleSidebar()
+        let without = c.contentScreenRect
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            let mid = page.frame.minX
+            check("sidebar hides with a slide", c.sidebarAnimating
+                && mid < withSidebar.minX - 1 && mid > without.minX + 1,
+                "\(withSidebar.minX) → \(mid) → \(without.minX)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            check("…and ends with the page in its room", !c.sidebarAnimating
+                && page.frame.isClose(to: without) && c.sidebarView?.isHidden == true,
+                NSStringFromRect(page.frame))
+            c.toggleSidebar()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                check("…and back", !c.sidebarAnimating && page.frame.isClose(to: withSidebar)
+                    && c.sidebarView?.isHidden == false && c.sidebarLeadingConstraint?.constant == 0,
+                    NSStringFromRect(page.frame))
+                next()
+            }
+        }
     }
 
     // Pages shown: exactly one, fully opaque, once a transition is over.
@@ -301,8 +328,11 @@ enum SpaceChecks {
             (0.8, {
                 checkOnePage("one page after a tab switch", c)
                 checkFullscreenShape(c)
-                TestScenarios.shot("spaces-work-light")
             }),
+            // The shape checks flip the sidebar twice: let those slides settle,
+            // then time one there and back (~1 s).
+            (0.6, { checkSidebarSlide(c) {} }),
+            (1.4, { TestScenarios.shot("spaces-work-light") }),
             (0.2, {
                 NSApp.appearance = dark
             }),
