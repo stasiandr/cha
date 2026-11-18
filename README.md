@@ -18,6 +18,17 @@ open build/cha.app
 The script fetches the CEF 152 binary distribution into `third_party/cef`
 (~300 MB, not in the repo) on the first run, then builds with cmake and ninja.
 
+That stock CEF plays only VP9, AV1 and Opus: sites that serve MP4 (H.264/AAC)
+say "your browser can't play this video". cha's real CEF is built from source
+with the proprietary codecs:
+
+```
+scripts/build-cef.sh       # ~20 min checkout (~50 GB), ~1 h build, → third_party/cef
+```
+
+The script explains the Xcode 27 workarounds it needs. `scripts/check.sh` has a
+media step that plays an H.264/AAC file and fails on the stock CEF.
+
 ## Run
 
 ```

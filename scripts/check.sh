@@ -91,6 +91,20 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/pe
   echo "peek FAILED"; failed=$((failed + 1))
 fi
 
+step "video and sound: H.264/AAC (cha's own CEF build), VP9, AV1, Opus"
+site="build/check/media-site"; rm -rf "$site"; mkdir -p "$site"
+cp scripts/fixtures/h264-aac.mp4 "$site/"; echo "<title>media</title>" > "$site/index.html"
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 -m http.server "$port" --bind 127.0.0.1 --directory "$site" >/dev/null 2>&1 &
+server=$!
+sleep 0.5
+CHA_TEST_PORT=$port run_scenario media 30; code=$?
+kill "$server" 2>/dev/null
+grep -E 'CHECK |MEDIA|PLAY' build/check/media.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/media.log; then
+  echo "media FAILED (stock CEF? scripts/build-cef.sh builds one with the codecs)"; failed=$((failed + 1))
+fi
+
 step "sign-ins survive a restart (default profile and a space's own)"
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 cookies=build/check/cookies.log; rm -f "$cookies"

@@ -322,25 +322,56 @@ enum TestScenarios {
             at(8) { NSApp.terminate(nil) }
 
         case "media":
-            // What the page side can play: codecs and DRM, as a site sees them.
+            // What a page can play, as a site sees it, and a real H.264/AAC
+            // file actually decoding (cha's CEF is built with those codecs;
+            // the stock one plays only VP9/AV1/Opus). Widevine is reported,
+            // not checked: Chromium downloads it in the background.
+            let port = ProcessInfo.processInfo.environment["CHA_TEST_PORT"] ?? "0"
             let probe = """
                 (async () => {
                   const v = document.createElement('video'), r = [];
                   for (const [n, t] of [['h264', 'video/mp4; codecs="avc1.42E01E"'], ['aac', 'audio/mp4; codecs="mp4a.40.2"'],
                       ['hevc', 'video/mp4; codecs="hvc1.1.6.L93.B0"'], ['vp9', 'video/webm; codecs="vp9"'],
                       ['av1', 'video/mp4; codecs="av01.0.05M.08"'], ['opus', 'audio/webm; codecs="opus"']])
-                    r.push(n + '=' + (v.canPlayType(t) || 'no') + '/' + (window.MediaSource ? MediaSource.isTypeSupported(t) : '-'));
+                    r.push(n + '=' + (v.canPlayType(t) === 'probably' && MediaSource.isTypeSupported(t) ? 'yes' : 'no'));
                   for (const ks of ['com.widevine.alpha', 'org.w3.clearkey']) {
                     try { await navigator.requestMediaKeySystemAccess(ks, [{videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}, {contentType: 'video/webm; codecs="vp9"'}]}]); r.push(ks + '=yes'); }
-                    catch (e) { r.push(ks + '=no(' + e.name + ')'); } }
+                    catch (e) { r.push(ks + '=no'); } }
                   document.title = 'MEDIA ' + r.join(' ');
                 })()
                 """
-            at(1) { controller.newTab(url: "https://example.com/") }
-            at(5) { controller.activeTab?.executeJavaScript(probe) }
-            at(25) { controller.activeTab?.executeJavaScript(probe) }
-            at(8) { NSLog("%@", controller.activeTab?.title ?? "-") }
-            at(28) { NSLog("%@", controller.activeTab?.title ?? "-"); NSApp.terminate(nil) }
+            let play = """
+                (() => {
+                  const v = document.createElement('video');
+                  v.muted = true; v.src = '/h264-aac.mp4'; document.body.append(v);
+                  v.play().catch(e => document.title = 'PLAY error ' + e.name);
+                  v.onerror = () => document.title = 'PLAY error ' + (v.error && v.error.code);
+                  setTimeout(() => document.title = 'PLAY w=' + v.videoWidth + ' t=' + v.currentTime.toFixed(1) +
+                    ' frames=' + v.webkitDecodedFrameCount + ' audio=' + v.webkitAudioDecodedByteCount, 1500);
+                })()
+                """
+            func title() -> String { controller.activeTab?.title ?? "-" }
+            func field(_ name: String) -> Double {
+                title().split(separator: " ").first { $0.hasPrefix(name + "=") }
+                    .flatMap { Double($0.dropFirst(name.count + 1)) } ?? 0
+            }
+            at(1) { controller.newTab(url: "http://127.0.0.1:\(port)/") }
+            at(3) { controller.activeTab?.executeJavaScript(probe) }
+            at(4) {
+                NSLog("%@", title())
+                for codec in ["h264", "aac", "hevc", "vp9", "av1", "opus"] {
+                    SpaceChecks.check("a page may play \(codec)", title().contains(" \(codec)=yes"), title())
+                }
+                controller.activeTab?.executeJavaScript(play)
+            }
+            at(7) {
+                NSLog("%@", title())
+                SpaceChecks.check("an H.264/AAC file plays: picture", field("w") == 64 && field("frames") > 5, title())
+                SpaceChecks.check("and sound", field("audio") > 0, title())
+                SpaceChecks.check("and time runs", field("t") > 0.5, title())
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
 
         case "pip":
             // Picture in picture without opening the floating window (it

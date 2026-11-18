@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Downloads the CEF binary distribution into third_party/cef (~300 MB).
+# Downloads the stock CEF binary distribution into third_party/cef (~300 MB).
+# It has no H.264/AAC: scripts/build-cef.sh builds the same version with them.
+# VERSION here is the one both use.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
