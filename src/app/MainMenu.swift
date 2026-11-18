@@ -36,7 +36,10 @@ enum MainMenu {
             "New Little Window", "n", target, #selector(MenuTarget.newLittleWindow),
             [.command, .option])
         file.add("Open in Main Window", "o", target, #selector(MenuTarget.openInMainWindow))
-        file.add("Empty Tab", "t", target, #selector(MenuTarget.emptyTab), [.command, .shift])
+        file.add(
+            "Reopen Closed Tab", "t", target, #selector(MenuTarget.reopenClosedTab),
+            [.command, .shift])
+        file.add("Empty Tab", "", target, #selector(MenuTarget.emptyTab), [])
         file.addItem(.separator())
         file.addItem(.separator())
         file.add("Passwords…", "", target, #selector(MenuTarget.passwords), [])
@@ -208,6 +211,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
         }
     }
     @objc func emptyTab() { controller?.newTab() }
+    @objc func reopenClosedTab() { controller?.reopenClosedTab() }
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
         controller?.activateTabAtIndex(sender.tag)
     }

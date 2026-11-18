@@ -240,6 +240,7 @@ enum TestScenarios {
             }
             at(1) { controller.newTab(url: page) }
             var opensBefore = 0
+            var closed: UUID?
             at(3) {
                 opensBefore = controller.commandBarOpens
                 guard let window = controller.activeTab?.nativeWindow,
@@ -269,6 +270,20 @@ enum TestScenarios {
                 SpaceChecks.check("in the background", controller.activeTab?.title == "Links",
                     controller.activeTab?.title ?? "-")
                 SpaceChecks.check("no Chromium window", strays().isEmpty)
+                // ⌘W, then ⌘⇧T as the keyboard makes it: AppKit matches a
+                // shifted shortcut by the key and layout, which only an event
+                // made from a CGEvent carries (NSEvent.keyEvent's doesn't match).
+                closed = controller.activeTabID
+                controller.closeActiveTab()
+                guard let cg = CGEvent(keyboardEventSource: nil, virtualKey: 17, keyDown: true) else { return }
+                cg.flags = [.maskCommand, .maskShift]
+                if let key = NSEvent(cgEvent: cg) { NSApp.sendEvent(key) }
+            }
+            at(8) {
+                SpaceChecks.check("⌘⇧T over a page reopens the closed tab",
+                    closed != nil && controller.activeTabID == closed && controller.activeTab?.title == "Links",
+                    controller.activeTab?.title ?? "-")
+                SpaceChecks.check("and no Chromium window", strays().isEmpty)
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }

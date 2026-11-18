@@ -147,6 +147,37 @@ enum SpaceChecks {
 
     // ⌘W on everything: today's tabs close one by one, then nothing is open;
     // pinned tabs are never opened on their own.
+    // ⌘⇧T brings closed tabs back, last closed first, each where it was.
+    static func checkReopenClosed(_ c: BrowserController) {
+        c.recentlyClosed = []
+        for name in ["A", "B", "C"] { c.newTab(url: page(name)) }  // today: C B A
+        let today = { c.activeSpace.unpinnedTabs.map(\.id) }
+        let before = today()
+        let b = before[1], cc = before[0]
+        c.renameTab(b, to: "Named B")
+        c.closeTab(b)
+        c.closeTab(cc)
+        check("closed tabs leave", !today().contains(b) && !today().contains(cc))
+        c.reopenClosedTab()
+        check("⌘⇧T brings the last closed tab back, open", c.activeTabID == cc && today().first == cc,
+              "\(today())")
+        c.reopenClosedTab()
+        check("then the one before, in its old place", today() == before && c.activeTabID == b,
+              "\(today()) vs \(before)")
+        check("with its name", c.tabData(b)?.displayTitle == "Named B", c.tabData(b)?.displayTitle ?? "-")
+        c.reopenClosedTab()
+        check("⌘⇧T with nothing closed changes nothing", today() == before && c.activeTabID == b)
+        // From another space it goes home first.
+        if let other = c.spaces.first(where: { $0.id != c.activeSpaceID }) {
+            let home = c.activeSpaceID
+            c.closeTab(b)
+            c.selectSpace(other.id, animated: false)
+            c.reopenClosedTab()
+            check("a tab closed in another space comes back there", c.activeSpaceID == home
+                  && c.activeTabID == b && today().contains(b))
+        }
+    }
+
     static func checkCloseEverything(_ c: BrowserController) {
         var pinnedOpened = false
         var steps = 0
@@ -553,6 +584,7 @@ enum SpaceChecks {
                 c.newTab(url: page("Close me"))
             }),
             (0.6, { checkCloseEverything(c) }),
+            (0.2, { checkReopenClosed(c) }),
             (0.8, {
                 // Many spaces: the inactive ones shrink to dots.
                 for _ in 0..<8 {

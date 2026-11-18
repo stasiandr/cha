@@ -718,6 +718,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             let index = space.tabs.firstIndex(where: { $0.id == id })
         else { return }
         unload(id)
+        recentlyClosed.append(ClosedTab(tab: space.tabs[index], spaceID: space.id, index: index))
         space.tabs.remove(at: index)
         if space.activeTabID == id {
             // The next tab below, or above when it was the last one.
@@ -751,6 +752,43 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func closeActiveTab() {
         if let id = activeSpace.activeTabID { closeTab(id) }
+    }
+
+    // ⌘⇧T: the last tab ⌘W (or Clear) took away comes back where it was, in
+    // its own space, with its name and folder. Only the page's address
+    // survives, not its back/forward history. Kept for this run only.
+    struct ClosedTab {
+        var tab: TabData
+        var spaceID: UUID
+        var index: Int
+    }
+    var recentlyClosed: [ClosedTab] = [] {
+        didSet { if recentlyClosed.count > 50 { recentlyClosed.removeFirst() } }
+    }
+
+    func reopenClosedTab() {
+        guard let closed = recentlyClosed.popLast() else {
+            NSSound.beep()
+            return
+        }
+        var tab = closed.tab
+        if tabData(tab.id) != nil { tab.id = UUID() }  // already back some other way
+        if tab.folderID != nil,
+            !(spaces.first { $0.id == closed.spaceID }?.folders.contains { $0.id == tab.folderID } ?? false)
+        {
+            tab.folderID = nil
+        }
+        let home = spaces.contains { $0.id == closed.spaceID } ? closed.spaceID : activeSpaceID
+        if home != activeSpaceID { selectSpace(home, animated: false) }
+        var space = activeSpace
+        // Today's tabs never go above the pinned ones.
+        let firstUnpinned = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
+        let index = min(max(closed.index, tab.isPinned ? 0 : firstUnpinned), space.tabs.count)
+        space.tabs.insert(tab, at: index)
+        space.activeTabID = tab.id
+        activeSpace = space
+        sidebarPage = .tabs
+        activateTab(tab.id)
     }
 
     // Drag and drop in the sidebar: reorder, pinning or unpinning the tab to
@@ -1067,7 +1105,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func clearToday(_ spaceID: UUID? = nil) {
         guard var space = spaces.first(where: { $0.id == (spaceID ?? activeSpaceID) })
         else { return }
-        for tab in space.unpinnedTabs { unload(tab.id) }
+        for tab in space.unpinnedTabs.reversed() {
+            unload(tab.id)
+            let index = space.tabs.firstIndex { $0.id == tab.id } ?? space.tabs.count
+            recentlyClosed.append(ClosedTab(tab: tab, spaceID: space.id, index: index))
+        }
         space.tabs.removeAll { !$0.isPinned }
         if let active = space.activeTabID, !space.tabs.contains(where: { $0.id == active }),
             !favorites.contains(where: { $0.id == active })
