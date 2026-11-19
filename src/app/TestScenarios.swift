@@ -384,6 +384,95 @@ enum TestScenarios {
                 SpaceChecks.check("an H.264/AAC file plays: picture", field("w") == 64 && field("frames") > 5, title())
                 SpaceChecks.check("and sound", field("audio") > 0, title())
                 SpaceChecks.check("and time runs", field("t") > 0.5, title())
+                // A page that asks "leave site?" (Meet in a call) and that
+                // the user has clicked in: ⌘W must still end it, sound and
+                // all, not leave it running behind an invisible prompt.
+                controller.activeTab?.executeJavaScript(
+                    "window.onbeforeunload = e => { e.preventDefault(); e.returnValue = ''; }; document.title = 'ASKS'")
+            }
+            var asking: ChaTab?
+            at(8) {
+                asking = controller.activeTab
+                asking?.clickAt(x: 20, y: 20)
+            }
+            at(8.5) { asking?.executeJavaScript("document.title = 'ASKS clicked=' + navigator.userActivation.hasBeenActive") }
+            at(9) {
+                SpaceChecks.check("the page asks before leaving, and was clicked", title() == "ASKS clicked=true", title())
+                controller.closeActiveTab()
+            }
+            // The same in a little window (a Meet link from Slack opens
+            // there), playing sound, closed as ⌘W closes it.
+            let asks = "window.onbeforeunload = e => { e.preventDefault(); e.returnValue = ''; };" +
+                "const c = new AudioContext(), o = c.createOscillator(); o.connect(c.destination); o.start();" +
+                "document.onclick = () => c.resume();" +
+                "document.title = 'ASKS'"
+            var little: LittleWindowController?
+            at(12) {
+                SpaceChecks.check("⌘W ends a page that asks before leaving", asking?.isClosed == true)
+                controller.openLittleWindow("http://127.0.0.1:\(port)/")
+                little = LittleWindowController.open.last
+            }
+            at(14) {
+                little?.tab.executeJavaScript(asks)
+            }
+            at(14.5) { little?.tab.clickAt(x: 20, y: 20) }
+            at(15) {
+                little?.tab.executeJavaScript(
+                    "document.title = 'ASKS clicked=' + navigator.userActivation.hasBeenActive + ' ' + c.state")
+            }
+            at(16) {
+                let t = little?.tab.title ?? "-"
+                SpaceChecks.check("a little window's page asks, was clicked, plays", t == "ASKS clicked=true running", t)
+                little?.close()
+            }
+            at(19) {
+                SpaceChecks.check("closing the little window ends its page", little?.tab.isClosed == true)
+                // A call asking for its own floating window (Meet does,
+                // when its tab is left).
+                controller.newTab(url: "http://127.0.0.1:\(port)/")
+            }
+            var floating: ChaTab?
+            var tabCount = 0
+            at(21) {
+                floating = controller.activeTab
+                tabCount = controller.activeSpace.tabs.count
+                floating?.executeJavaScript(withUserGesture:
+                    "documentPictureInPicture.requestWindow({width: 300, height: 200}).then(" +
+                    "w => document.title = 'PIP open', e => document.title = 'PIP error ' + e.name)")
+            }
+            at(23) {
+                // Not supported yet: the request fails, and no empty tab
+                // stands in for the floating window (it used to).
+                SpaceChecks.check("a floating-window request opens no empty tab",
+                    controller.activeSpace.tabs.count == tabCount && controller.activeTab === floating,
+                    "\(controller.activeSpace.tabs.count) tabs, was \(tabCount); \(floating?.title ?? "-")")
+                controller.closeActiveTab()
+            }
+            at(26) {
+                SpaceChecks.check("⌘W ends the page that asked for it", floating?.isClosed == true)
+                // A call left for another tab, then closed from the sidebar.
+                controller.newTab(url: "http://127.0.0.1:\(port)/")
+            }
+            var behind: ChaTab?
+            var behindID: UUID?
+            at(28) {
+                behind = controller.activeTab
+                behindID = controller.activeSpace.activeTabID
+                behind?.executeJavaScript(asks)
+            }
+            at(28.5) { behind?.clickAt(x: 20, y: 20) }
+            at(29) {
+                behind?.executeJavaScript(
+                    "document.title = 'ASKS clicked=' + navigator.userActivation.hasBeenActive + ' ' + c.state")
+            }
+            at(30) {
+                let t = behind?.title ?? "-"
+                SpaceChecks.check("a page asks before leaving, clicked", t.hasPrefix("ASKS clicked=true"), t)
+                controller.newTab(url: "https://example.com/")
+            }
+            at(32) { if let behindID { controller.closeTab(behindID) } }
+            at(35) {
+                SpaceChecks.check("closing it from the sidebar ends it", behind?.isClosed == true)
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }

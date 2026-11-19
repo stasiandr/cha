@@ -240,7 +240,7 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
     func windowWillClose(_ notification: Notification) {
         if !movedToMain {
             if let native = tab?.nativeWindow, native.parent != nil { window.removeChildWindow(native) }
-            tab?.close()
+            tab?.end("little window")
         }
         for observer in pinObservers { NotificationCenter.default.removeObserver(observer) }
         pinObservers = []

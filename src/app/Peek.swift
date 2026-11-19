@@ -140,7 +140,7 @@ final class PeekController: NSObject, ObservableObject, ChaTabDelegate {
         guard !closed else { return }
         closed = true
         teardown()
-        if !expanded { tab?.close() }
+        if !expanded { tab?.end("peek") }
         main?.peekDidClose(self)
     }
 

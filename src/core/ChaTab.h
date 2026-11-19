@@ -37,6 +37,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly, copy) NSString* title;
 @property(nonatomic, readonly, nullable) NSImage* favicon;
 @property(nonatomic, readonly) BOOL isLoading;
+// The browser is gone (OnBeforeClose): the page runs and plays no more.
+@property(nonatomic, readonly) BOOL isClosed;
 @property(nonatomic, readonly) BOOL canGoBack;
 @property(nonatomic, readonly) BOOL canGoForward;
 

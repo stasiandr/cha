@@ -73,14 +73,41 @@ enum Diagnostics {
 extension Diagnostics {
     static func linkLog(_ line: String) {
         NSLog("LINK %@", line)
+        fileLog("links.log", line)
+    }
+
+    // Every page closed and whether its browser went: a page heard after
+    // its tab was closed shows up here.
+    static func tabLog(_ line: String) {
+        NSLog("TAB %@", line)
+        fileLog("tabs.log", line)
+    }
+
+    // ~/Library/Logs/cha/<name>, its last 200 lines; not from checks.
+    private static func fileLog(_ name: String, _ line: String) {
         guard !quiet else { return }
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/cha")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let file = dir.appendingPathComponent("links.log")
+        let file = dir.appendingPathComponent(name)
         let stamp = ISO8601DateFormatter().string(from: Date())
         var lines = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
         lines.append(stamp + " " + line)
         try? lines.suffix(200).joined(separator: "\n").appending("\n").write(to: file, atomically: true, encoding: .utf8)
+    }
+}
+
+extension ChaTab {
+    // Closes the page and makes sure it went: one still there 3 s later
+    // (it would go on playing, unseen) is logged and closed again.
+    func end(_ why: String) {
+        let url = currentURL
+        Diagnostics.tabLog("close (\(why)) \(url)")
+        close()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, !self.isClosed else { return }
+            Diagnostics.tabLog("STILL OPEN 3 s after closing, again: \(url)")
+            self.close()
+        }
     }
 }
 

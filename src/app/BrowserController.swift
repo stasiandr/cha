@@ -704,7 +704,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if let native = tab.nativeWindow, native.parent != nil {
             window.removeChildWindow(native)
         }
-        tab.close()
+        tab.end("tab")
         loadingTabs.remove(id)
     }
 

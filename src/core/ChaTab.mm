@@ -470,6 +470,11 @@ class TabHost : public CefClient,
                      bool*) override {
     // ⌘-click on a link arrives here too, as a background tab; ⇧-click as a
     // new window, which in cha (as in Arc) is a Peek.
+    // Document picture in picture (Meet's floating call window) isn't
+    // supported yet: refused, rather than opened as an empty tab.
+    if (disposition == CEF_WOD_NEW_PICTURE_IN_PICTURE) {
+      return true;
+    }
     NSString* url = ToNSString(target_url);
     BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
     BOOL peek = disposition == CEF_WOD_NEW_WINDOW && user_gesture;
@@ -612,6 +617,7 @@ void ChaPreparePageWindowCorners() {
 @implementation ChaTab {
   CefRefPtr<TabHost> _host;
   CGFloat _cornerRadius;
+  BOOL _wantsClose;
   void (^_selectionHandler)(NSString*);
 }
 
@@ -790,8 +796,20 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   ChaApplyCornerRadius(native, radius);
 }
 
+// Ends the page for good, silent at once: the page's window closes and
+// takes the browser along. Asked again (the page still there), the
+// browser itself is told to close without asking. A tab closed before its
+// browser exists closes as soon as it does.
 - (void)close {
-  if (_host && _host->window) {
+  BOOL again = _wantsClose;
+  _wantsClose = YES;
+  auto browser = _host ? _host->browser() : nullptr;
+  if (browser) {
+    browser->GetHost()->SetAudioMuted(true);
+  }
+  if (again && browser) {
+    browser->GetHost()->CloseBrowser(true);
+  } else if (_host && _host->window) {
     _host->window->Close();
   }
 }
@@ -818,6 +836,11 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   native.contentView.layer.cornerRadius = _cornerRadius;
   ChaApplyCornerRadius(native, _cornerRadius);
   native.contentView.layer.masksToBounds = YES;
+  if (_wantsClose) {
+    _wantsClose = NO;
+    [self close];
+    return;
+  }
   [self.delegate tabDidBecomeReady:self];
 }
 
@@ -826,6 +849,10 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
 }
 
 - (void)cefBrowserClosed {
+  _isClosed = YES;
+  if (_host && _host->window) {
+    _host->window->Close();  // the page's window goes with its browser
+  }
   [self.delegate tabDidClose:self];
 }
 
