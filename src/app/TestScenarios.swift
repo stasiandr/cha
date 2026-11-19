@@ -477,6 +477,31 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "closevideo":
+            // A real video site: playing, then closed with ⌘W. CHA_TEST_URL
+            // picks the page.
+            let url = ProcessInfo.processInfo.environment["CHA_TEST_URL"] ?? "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+            var page: ChaTab?
+            at(1) { controller.newTab(url: url) }
+            at(8) {
+                page = controller.activeTab
+                page?.executeJavaScript(withUserGesture:
+                    "const v = document.querySelector('video'); v && v.play(); 'x'")
+            }
+            at(12) {
+                page?.executeJavaScript(
+                    "const w = document.querySelector('video'); document.title = 'VIDEO ' + (w ? (w.paused ? 'paused' : 'playing') + ' t=' + w.currentTime.toFixed(1) : 'none')")
+            }
+            at(13) {
+                NSLog("CLOSEVIDEO %@", page?.title ?? "-")
+                controller.closeActiveTab()
+            }
+            at(17) {
+                SpaceChecks.check("a closed video tab is gone", page?.isClosed == true, page?.title ?? "-")
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "hardreload":
             // ⇧⌘R as the keyboard sends it: the site's Cache Storage is
             // emptied and the page loads again; its localStorage stays.

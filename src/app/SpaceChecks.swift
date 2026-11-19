@@ -178,6 +178,29 @@ enum SpaceChecks {
         }
     }
 
+    // A tab taken out of the model by any path but closeTab: its page
+    // goes too, once the change is over; a tab only moving keeps its page.
+    static func checkOrphanPages(_ c: BrowserController) {
+        c.newTab(url: page("Orphan"))
+        c.newTab(url: page("Mover"))
+        guard let orphan = c.activeSpace.unpinnedTabs.last?.id,
+            let mover = c.activeSpace.unpinnedTabs.first?.id
+        else { return check("orphan tabs made", false) }
+        c.activateTab(orphan)
+        c.activateTab(mover)
+        let page = c.liveTabs[orphan]
+        var space = c.activeSpace
+        space.tabs.removeAll { $0.id == orphan }
+        c.replace(space)
+        c.togglePin(mover)
+        DispatchQueue.main.async {
+            check("a page whose tab is gone is closed", c.liveTabs[orphan] == nil && page != nil)
+            check("a tab that only moved keeps its page", c.liveTabs[mover] != nil)
+            c.togglePin(mover)
+            c.closeTab(mover)
+        }
+    }
+
     static func checkCloseEverything(_ c: BrowserController) {
         var pinnedOpened = false
         var steps = 0
@@ -585,6 +608,7 @@ enum SpaceChecks {
             }),
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
+            (0.4, { checkOrphanPages(c) }),
             (0.8, {
                 // Many spaces: the inactive ones shrink to dots.
                 for _ in 0..<8 {

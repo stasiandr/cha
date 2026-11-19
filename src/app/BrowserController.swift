@@ -7,10 +7,10 @@ import SwiftUI
 final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     ChaTabDelegate
 {
-    @Published var spaces: [SpaceData]
+    @Published var spaces: [SpaceData] { didSet { scheduleOrphanSweep() } }
     @Published var activeSpaceID: UUID
     // Favourites are shared by every space, as in Arc.
-    @Published var favorites: [TabData]
+    @Published var favorites: [TabData] { didSet { scheduleOrphanSweep() } }
     @Published var archive: [ArchivedTab]
     @Published var profiles: [ProfileData]
     @Published var favicons: [UUID: NSImage] = [:]
@@ -709,6 +709,29 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func isLoaded(_ id: UUID) -> Bool { liveTabs[id] != nil }
+
+    // A page whose tab has left the model (no space or favourite has it)
+    // would run on unseen, sound and all, with no tab to close it from:
+    // it is closed, and noted in tabs.log. Checked once the change is
+    // over, so a tab moving between places is never caught halfway.
+    private var orphanSweepScheduled = false
+    private func scheduleOrphanSweep() {
+        guard !orphanSweepScheduled else { return }
+        orphanSweepScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            self?.orphanSweepScheduled = false
+            self?.closeOrphanPages()
+        }
+    }
+
+    func closeOrphanPages() {
+        guard !isQuitting else { return }
+        let known = Set(spaces.flatMap { $0.tabs.map(\.id) } + favorites.map(\.id))
+        for (id, tab) in liveTabs where !known.contains(id) {
+            Diagnostics.tabLog("a page with no tab, closing: \(tab.currentURL)")
+            unload(id)
+        }
+    }
 
     // ⌘W: unpinned tabs go to the archive; pinned ones and favourites are
     // only unloaded and stay where they are.
