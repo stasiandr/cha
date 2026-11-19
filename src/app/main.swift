@@ -1,6 +1,7 @@
 import AppKit
 
 Diagnostics.mark("main")
+ChaTab.log = { Diagnostics.tabLog($0) }
 
 // CEF needs its own NSApplication subclass in place before any UI exists.
 ChaEngine.installApplication()

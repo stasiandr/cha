@@ -39,6 +39,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) BOOL isLoading;
 // The browser is gone (OnBeforeClose): the page runs and plays no more.
 @property(nonatomic, readonly) BOOL isClosed;
+// Where pages that misbehave on closing are reported (cha's tabs.log).
+@property(class, nonatomic, copy, nullable) void (^log)(NSString* line);
 @property(nonatomic, readonly) BOOL canGoBack;
 @property(nonatomic, readonly) BOOL canGoForward;
 

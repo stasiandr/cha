@@ -28,7 +28,7 @@
 @property(nonatomic) BOOL canGoBack;
 @property(nonatomic) BOOL canGoForward;
 - (void)cefWindowCreated;
-- (void)cefWindowDestroyed;
+- (void)cefWindowDestroyed:(BOOL)browserAlive;
 - (void)cefBrowserClosed;
 - (void)cefRequestsNewTab:(NSString*)url;
 - (void)cefRequestsNewTab:(NSString*)url background:(BOOL)background;
@@ -222,7 +222,10 @@ class TabHost : public CefClient,
   CefRefPtr<CefWindow> window;
   CefRefPtr<CefBrowserView> view;
 
-  CefRefPtr<CefBrowser> browser() { return view ? view->GetBrowser() : nullptr; }
+  // The page's browser from its creation to OnBeforeClose, whether or not
+  // its window still exists.
+  CefRefPtr<CefBrowser> alive;
+  CefRefPtr<CefBrowser> browser() { return view && view->GetBrowser() ? view->GetBrowser() : alive; }
 
   // CefClient
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
@@ -488,7 +491,9 @@ class TabHost : public CefClient,
     });
     return true;  // Handled: the app opens its own tab instead.
   }
+  void OnAfterCreated(CefRefPtr<CefBrowser> browser) override { alive = browser; }
   void OnBeforeClose(CefRefPtr<CefBrowser>) override {
+    alive = nullptr;
     [tab_ cefBrowserClosed];
   }
 
@@ -516,7 +521,7 @@ class TabHost : public CefClient,
   void OnWindowDestroyed(CefRefPtr<CefWindow>) override {
     view = nullptr;
     window = nullptr;
-    [tab_ cefWindowDestroyed];
+    [tab_ cefWindowDestroyed:alive != nullptr];
   }
 
  private:
@@ -614,11 +619,21 @@ void ChaPreparePageWindowCorners() {
 }
 @end
 
+static void (^gTabLog)(NSString*);
+
 @implementation ChaTab {
   CefRefPtr<TabHost> _host;
   CGFloat _cornerRadius;
   BOOL _wantsClose;
   void (^_selectionHandler)(NSString*);
+}
+
++ (void (^)(NSString*))log {
+  return gTabLog;
+}
+
++ (void)setLog:(void (^)(NSString*))log {
+  gTabLog = [log copy];
 }
 
 static NSString* const kSelectionMarker = @"__cha_selection__";
@@ -866,14 +881,28 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   [self.delegate tabDidBecomeReady:self];
 }
 
-- (void)cefWindowDestroyed {
-  _host = nullptr;
+// Normally the browser has closed by now. One that outlives its window
+// would play on with nothing to close it from: it is told to go, muted.
+- (void)cefWindowDestroyed:(BOOL)browserAlive {
+  auto browser = browserAlive && _host ? _host->browser() : nullptr;
+  if (!browser) {
+    _host = nullptr;
+    return;
+  }
+  NSString* line = [NSString stringWithFormat:@"window gone before its browser, closing: %@", self.currentURL];
+  if (ChaTab.log) {
+    ChaTab.log(line);
+  }
+  browser->GetHost()->SetAudioMuted(true);
+  browser->GetHost()->CloseBrowser(true);
 }
 
 - (void)cefBrowserClosed {
   _isClosed = YES;
   if (_host && _host->window) {
     _host->window->Close();  // the page's window goes with its browser
+  } else {
+    _host = nullptr;
   }
   [self.delegate tabDidClose:self];
 }
