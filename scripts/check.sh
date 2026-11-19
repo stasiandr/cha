@@ -190,6 +190,14 @@ if [ "$mode" = window ]; then
   fi
 fi
 
+if [ "$mode" = window ] && [ "$real_input" = 1 ] && [ "$(swift -e 'import AppKit; print(NSScreen.screens.count)' 2>/dev/null)" -gt 1 ]; then
+  step "a link from an app in front, windowed and full screen (display 1, takes focus)"
+  for m in window fullscreen; do
+    if scripts/linktest/run.sh "$m" >"build/check/linktest-$m.log" 2>&1; then echo "$m: little window over the app"
+    else grep -E 'FAIL' "build/check/linktest-$m.log"; echo "linktest $m FAILED"; failed=$((failed + 1)); fi
+  done
+fi
+
 if [ "$mode" = full ]; then
   step "codes"
   run_scenario codes 40

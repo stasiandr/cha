@@ -8,7 +8,7 @@ if Diagnostics.headless { NSApp.setActivationPolicy(.accessory) }
 // A windowed check on another screen keeps the Dock icon, as a real run
 // would, but never comes to the front by itself. macOS still activates a
 // freshly launched app once; focus goes straight back to whoever had it.
-if Diagnostics.screenIndex != nil {
+if Diagnostics.screenIndex != nil && !Diagnostics.loud {
     NSApp.setActivationPolicy(.regular)
     let previous = NSWorkspace.shared.frontmostApplication
     NotificationCenter.default.addObserver(

@@ -174,8 +174,12 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
                     width: size.width, height: size.height), display: false)
             // Not active, it would sit under whatever is on that display;
             // a check needs it in view (and its pages painting).
-            window.level = .floating
-            window.orderFront(nil)
+            if Diagnostics.loud {
+                window.makeKeyAndOrderFront(nil)
+            } else {
+                window.level = .floating
+                window.orderFront(nil)
+            }
             NSLog(
                 "SCREEN %d of %d: window at %@ on %@", index, screens.count,
                 NSStringFromRect(window.frame), window.screen?.localizedName ?? "-")

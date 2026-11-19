@@ -68,7 +68,8 @@ static BOOL ChaQuiet() {
   dispatch_once(&once, ^{
     const char* headless = getenv("CHA_HEADLESS");
     const char* screen = getenv("CHA_SCREEN");
-    quiet = (headless && *headless) || (screen && *screen);
+    const char* loud = getenv("CHA_LOUD");
+    quiet = (headless && *headless) || (screen && *screen && !(loud && *loud));
   });
   return quiet;
 }

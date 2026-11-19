@@ -29,7 +29,13 @@ final class URLOpener: NSObject {
         guard let url = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue else { return }
         // Who sent the link: its window is where the little window goes.
         let sender = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value
-        callerFrame = Self.frontWindowFrame(of: sender.map { pid_t($0) })
+        let caller = Self.frontWindow(of: sender.map { pid_t($0) })
+        callerFrame = caller?.frame
+        callerWindow = caller?.number
+        // LaunchServices activated cha before handing over the link, which
+        // raised every cha window over the app the link came from: the main
+        // window goes back behind that app's window.
+        if let number = caller?.number { controller?.sendMainWindow(behind: number) }
         let senderApp = sender.flatMap { NSRunningApplication(processIdentifier: pid_t($0))?.localizedName }
         Diagnostics.linkLog(String(
             format: "link from %@ (pid %d), front %@, caller window %@, mouse %@", senderApp ?? "-",
@@ -41,8 +47,11 @@ final class URLOpener: NSObject {
     // The app the link came from and its front window, in AppKit screen
     // coordinates: the sender of the event, else the app in front then.
     private(set) var callerFrame: NSRect?
+    private(set) var callerWindow: Int?
 
-    static func frontWindowFrame(of pid: pid_t?) -> NSRect? {
+    static func frontWindowFrame(of pid: pid_t?) -> NSRect? { frontWindow(of: pid)?.frame }
+
+    static func frontWindow(of pid: pid_t?) -> (frame: NSRect, number: Int)? {
         let own = ProcessInfo.processInfo.processIdentifier
         var candidates: [pid_t] = []
         if let pid, pid > 0, pid != own { candidates.append(pid) }
@@ -62,7 +71,8 @@ final class URLOpener: NSObject {
                     let b = info[kCGWindowBounds as String] as? [String: CGFloat],
                     let w = b["Width"], let h = b["Height"], w >= 200, h >= 150
                 else { continue }
-                return NSRect(x: b["X"] ?? 0, y: top - (b["Y"] ?? 0) - h, width: w, height: h)
+                let number = info[kCGWindowNumber as String] as? Int ?? 0
+                return (NSRect(x: b["X"] ?? 0, y: top - (b["Y"] ?? 0) - h, width: w, height: h), number)
             }
         }
         return nil
@@ -101,8 +111,9 @@ final class URLOpener: NSObject {
         pending = []
         // Like Little Arc: each link opens in a little window over the app
         // it came from; "Open in cha" moves it into the main window.
-        for url in urls { controller.openLittleWindow(url, over: callerFrame) }
+        for url in urls { controller.openLittleWindow(url, over: callerFrame, callerWindow: callerWindow) }
         callerFrame = nil
+        callerWindow = nil
         NSLog("OPENED %@", urls.joined(separator: " "))
     }
 

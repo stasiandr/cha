@@ -20,7 +20,7 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
     @Published var favicon: NSImage?
     @Published var loading = true
 
-    let window: BrowserWindow
+    let window: LittlePanel
     private(set) var tab: ChaTab!
     private weak var main: BrowserController?
     private var movedToMain = false
@@ -80,10 +80,17 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         self.url = url
         self.main = main
         let frame = Self.frame(over: caller)
-        window = BrowserWindow(
-            contentRect: frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered, defer: false)
+        // Made on the screen it goes to: made on the main one, AppKit held it
+        // there when it was shown (the frame is relative to that screen).
+        let home = NSScreen.screens.first { $0.frame.intersects(frame) && $0.frame.contains(NSPoint(x: frame.midX, y: frame.midY)) }
+        window = LittlePanel(
+            contentRect: frame.offsetBy(dx: -(home?.frame.minX ?? 0), dy: -(home?.frame.minY ?? 0)),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered, defer: false, screen: home)
+        window.hidesOnDeactivate = false
+        window.becomesKeyOnlyIfNeeded = false
+        window.isFloatingPanel = true
+        if !window.frame.isClose(to: frame) { window.setFrame(frame, display: false) }
         super.init()
 
         window.titlebarAppearsTransparent = true
@@ -99,7 +106,8 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         // the "active" desktop instead, which with a display per desktop
         // could be the other monitor (where cha's main window is). Joining
         // every desktop shows it right where its frame is, a full-screen
-        // app's desktop included; once on screen it settles into that one.
+        // app's desktop included, and it stays that way until dealt with:
+        // dropped to one desktop, it left the full-screen app's.
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
@@ -141,9 +149,9 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
                         format: "little +%.2fs want %@ (%@) got %@ (%@)%@", delay,
                         NSStringFromRect(frame), Self.screenName(frame),
                         NSStringFromRect(self.window.frame), Self.screenName(self.window.frame),
-                        moved ? " → put back" : ""))
+                        moved ? " → put back" : "")
+                        + String(format: ", keys to %@, cha active %d", NSApp.keyWindow.map { $0 === self.tab?.nativeWindow ? "its page" : String(describing: type(of: $0)) } ?? "nothing", NSApp.isActive ? 1 : 0))
                     if moved { self.window.setFrame(frame, display: true) }
-                    if delay > 0.1 { self.window.collectionBehavior = [.fullScreenAuxiliary] }
                 }
             }
         }
@@ -353,7 +361,20 @@ extension BrowserController {
             native.parent === window ? 1 : 0, native.alphaValue)
     }
 
-    func openLittleWindow(_ url: String, over caller: NSRect? = nil) {
+    func openLittleWindow(_ url: String, over caller: NSRect? = nil, callerWindow: Int? = nil) {
         LittleWindowController.show(url, main: self, over: caller)
+        guard let callerWindow, !Diagnostics.quiet else { return }
+        for delay in [0.0, 0.05, 0.4] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.sendMainWindow(behind: callerWindow)
+            }
+        }
+    }
+
+    // The main window (its pages follow, as child windows) right behind
+    // another app's window.
+    func sendMainWindow(behind number: Int) {
+        guard let window, window.isVisible, !window.styleMask.contains(.fullScreen) else { return }
+        window.order(.below, relativeTo: number)
     }
 }

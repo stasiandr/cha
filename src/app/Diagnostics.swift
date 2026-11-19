@@ -26,8 +26,13 @@ enum Diagnostics {
         return index < 0 || index >= NSScreen.screens.count
     }
 
+    // CHA_LOUD=1 with CHA_SCREEN: on that display, but behaving as a real
+    // run does (it activates and takes focus), for checks of activation
+    // itself, such as where a little window lands. Only when asked for.
+    static let loud = !(ProcessInfo.processInfo.environment["CHA_LOUD"] ?? "").isEmpty
+
     // Don't take focus from whoever is at the Mac.
-    static var quiet: Bool { headless || screenIndex != nil }
+    static var quiet: Bool { headless || (screenIndex != nil && !loud) }
 
     static let offscreenOrigin = NSPoint(x: -30000, y: -30000)
 
@@ -91,58 +96,90 @@ final class BrowserWindow: NSWindow {
         return super.constrainFrameRect(frameRect, to: screen)
     }
 
-    // Arc sets the traffic lights lower and further in than AppKit does, on
-    // the same line as the sidebar's first row: the close button's centre is
-    // 19 pt from the left and 22 pt from the top (measured on the user's Arc,
-    // macOS 26+ buttons). AppKit puts them back on every titlebar layout, so
-    // this runs after resizes, full screen and appearance changes.
-    static let trafficLightCenter = NSPoint(x: 19, y: 22)
-    private var buttonSpacing: CGFloat?
+    static let trafficLightCenter = TrafficLights.center
+    private lazy var lights = TrafficLights(self)
 
     // Hidden in full screen and while the sidebar is hidden, as in Arc; the
     // page then has the whole window.
-    var trafficLightsHidden = false {
-        didSet { placeTrafficLights() }
+    var trafficLightsHidden: Bool {
+        get { lights.hidden }
+        set { lights.hidden = newValue; placeTrafficLights() }
     }
 
-    func placeTrafficLights() {
+    func placeTrafficLights() { lights.place() }
+
+    override func layoutIfNeeded() {
+        super.layoutIfNeeded()
+        placeTrafficLights()
+    }
+}
+
+// The little window is a panel: only a panel may show over another app's
+// full-screen desktop (a window, whatever its collection behaviour, stays
+// on cha's own desktop of that display).
+final class LittlePanel: NSPanel {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        if Diagnostics.quiet { return frameRect }
+        return super.constrainFrameRect(frameRect, to: screen)
+    }
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
+    private lazy var lights = TrafficLights(self)
+    func placeTrafficLights() { lights.place() }
+
+    override func layoutIfNeeded() {
+        super.layoutIfNeeded()
+        placeTrafficLights()
+    }
+}
+
+// Arc sets the traffic lights lower and further in than AppKit does, on the
+// same line as the sidebar's first row: the close button's centre is 19 pt
+// from the left and 22 pt from the top (measured on the user's Arc, macOS 26+
+// buttons). AppKit puts them back on every titlebar layout, so this runs
+// after resizes, full screen and appearance changes.
+final class TrafficLights {
+    static let center = NSPoint(x: 19, y: 22)
+    private weak var window: NSWindow?
+    var hidden = false
+    private var spacing: CGFloat?
+    private var placing = false
+    private var watched = false
+
+    init(_ window: NSWindow) { self.window = window }
+
+    func place() {
+        guard let window else { return }
         let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
-        let buttons = types.compactMap { standardWindowButton($0) }
-        guard buttons.count == 3, let titlebar = buttons[0].superview,
-            let container = titlebar.superview
-        else { return }
-        for button in buttons { button.isHidden = trafficLightsHidden }
-        guard !styleMask.contains(.fullScreen) else { return }
+        let buttons = types.compactMap { window.standardWindowButton($0) }
+        guard buttons.count == 3, let titlebar = buttons[0].superview else { return }
+        for button in buttons { button.isHidden = hidden }
+        guard !window.styleMask.contains(.fullScreen) else { return }
         // Their own spacing (it changed between macOS versions), taken once
         // from where AppKit first put them.
-        let spacing = buttonSpacing ?? (buttons[1].frame.minX - buttons[0].frame.minX)
-        buttonSpacing = spacing
-
+        let spacing = self.spacing ?? (buttons[1].frame.minX - buttons[0].frame.minX)
+        self.spacing = spacing
         // The titlebar stays AppKit's (32 pt): a button centred 22 pt down
         // still fits. Positions are worked out in the window's coordinates,
         // then carried into the titlebar's.
-        guard let content = contentView else { return }
+        guard let content = window.contentView else { return }
         let height = content.bounds.height
         placing = true
         defer { placing = false }
         for (index, button) in buttons.enumerated() {
             let size = button.frame.size
-            let centre = NSPoint(
-                x: Self.trafficLightCenter.x + CGFloat(index) * spacing,
-                y: height - Self.trafficLightCenter.y)
+            let centre = NSPoint(x: Self.center.x + CGFloat(index) * spacing, y: height - Self.center.y)
             let local = titlebar.convert(centre, from: nil)
             let origin = NSPoint(
                 x: (local.x - size.width / 2).rounded(), y: (local.y - size.height / 2).rounded())
             if button.frame.origin != origin { button.setFrameOrigin(origin) }
         }
         watch(buttons)
-        _ = container
     }
 
     // AppKit moves the buttons back on its own titlebar layouts, which don't
-    // all pass through this window; each move is undone as it happens.
-    private var placing = false
-    private var watched = false
+    // all pass through the window; each move is undone as it happens.
     private func watch(_ buttons: [NSButton]) {
         guard !watched else { return }
         watched = true
@@ -152,14 +189,9 @@ final class BrowserWindow: NSWindow {
                 forName: NSView.frameDidChangeNotification, object: button, queue: .main
             ) { [weak self] _ in
                 guard let self, !self.placing else { return }
-                self.placeTrafficLights()
+                self.place()
             }
         }
-    }
-
-    override func layoutIfNeeded() {
-        super.layoutIfNeeded()
-        placeTrafficLights()
     }
 }
 
