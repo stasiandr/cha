@@ -717,6 +717,28 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   }
 }
 
+- (void)reloadClearingCache {
+  auto browser = _host ? _host->browser() : nullptr;
+  if (!browser) {
+    return;
+  }
+  auto host = browser->GetHost();
+  // One DevTools channel, taken in order: the caches go before the reload.
+  host->ExecuteDevToolsMethod(0, "Network.clearBrowserCache", nullptr);
+  NSURL* url = [NSURL URLWithString:self.currentURL];
+  if ([url.scheme isEqualToString:@"http"] || [url.scheme isEqualToString:@"https"]) {
+    NSString* origin = [NSString stringWithFormat:@"%@://%@%@", url.scheme, url.host,
+                                 url.port ? [NSString stringWithFormat:@":%@", url.port] : @""];
+    CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+    params->SetString("origin", origin.UTF8String);
+    params->SetString("storageTypes", "cache_storage,service_workers,shader_cache");
+    host->ExecuteDevToolsMethod(0, "Storage.clearDataForOrigin", params);
+  }
+  CefRefPtr<CefDictionaryValue> reload = CefDictionaryValue::Create();
+  reload->SetBool("ignoreCache", true);
+  host->ExecuteDevToolsMethod(0, "Page.reload", reload);
+}
+
 - (void)stopLoading {
   if (auto browser = _host ? _host->browser() : nullptr) {
     browser->StopLoad();

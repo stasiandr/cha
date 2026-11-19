@@ -477,6 +477,34 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "hardreload":
+            // ⇧⌘R as the keyboard sends it: the site's Cache Storage is
+            // emptied and the page loads again; its localStorage stays.
+            let port = ProcessInfo.processInfo.environment["CHA_TEST_PORT"] ?? "0"
+            func title() -> String { controller.activeTab?.title ?? "-" }
+            at(1) { controller.newTab(url: "http://127.0.0.1:\(port)/") }
+            at(3) {
+                controller.activeTab?.executeJavaScript(
+                    "localStorage.k = 'kept'; window.marker = 1;" +
+                    "caches.open('c').then(c => c.put('/x', new Response('x'))).then(() => caches.keys())" +
+                    ".then(k => document.title = 'CACHED ' + k.length)")
+            }
+            at(4) {
+                SpaceChecks.check("the page has a cache", title() == "CACHED 1", title())
+                guard let cg = CGEvent(keyboardEventSource: nil, virtualKey: 15, keyDown: true) else { return }
+                cg.flags = [.maskCommand, .maskShift]
+                if let key = NSEvent(cgEvent: cg) { NSApp.sendEvent(key) }
+            }
+            at(7) {
+                controller.activeTab?.executeJavaScript(
+                    "caches.keys().then(k => document.title = 'AFTER ' + k.length + ' ' + (window.marker ? 'same' : 'reloaded') + ' ' + localStorage.k)")
+            }
+            at(8) {
+                SpaceChecks.check("⇧⌘R empties the cache, reloads, keeps site data", title() == "AFTER 0 reloaded kept", title())
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "pip":
             // Picture in picture without opening the floating window (it
             // would land on the screen in use): the user-gesture path, and

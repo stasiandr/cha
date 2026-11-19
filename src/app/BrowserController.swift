@@ -959,6 +959,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func goBack() { activeTab?.goBack() }
     func goForward() { activeTab?.goForward() }
     func reload() { activeTab?.reload() }
+    func reloadClearingCache() { activeTab?.reloadClearingCache() }
 
     func focusAddressBar() {
         if !sidebarVisible { toggleSidebar() }

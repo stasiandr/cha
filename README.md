@@ -69,11 +69,13 @@ stands, is in [docs/arc-parity.md](docs/arc-parity.md).
 ## Keyboard
 
 - ⌘T command bar (opens the result in a new tab), ⌘L command bar for the current tab
-- ⇧⌘T empty tab, ⌘W close tab (pinned tabs and favourites only unload), ⌘1…⌘9 pick a tab
+- ⌘W close tab (pinned tabs and favourites only unload), ⇧⌘T reopen it, ⌘1…⌘9 pick a tab
 - ⌘D pin / unpin, ⇧⌘D add to favourites, ⇧⌘C copy link, ⇧⌘K clear today's tabs
 - ⌥⌘A archived tabs
 - ⇧⌘V fill the verification code for the current site
-- ⌘S toggle sidebar, ⌃⌘F full screen, ⌘R reload, ⌘[ / ⌘] back and forward
+- ⌘S toggle sidebar, ⌃⌘F full screen, ⌘[ / ⌘] back and forward
+- ⌘R reload, ⇧⌘R empty the site's caches (HTTP cache, Cache Storage, service
+  workers) and load everything anew; cookies and site data stay
 - ⇧⌘N new space, ⌃1…⌃9 go to a space, ⌥⌘← / ⌥⌘→ previous / next space
 
 ## Spaces

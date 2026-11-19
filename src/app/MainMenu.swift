@@ -78,6 +78,9 @@ enum MainMenu {
         let view = NSMenu(title: "View")
         view.add("Toggle Sidebar", "s", target, #selector(MenuTarget.toggleSidebar))
         view.add("Reload", "r", target, #selector(MenuTarget.reload))
+        view.add(
+            "Clear Cache and Reload", "r", target, #selector(MenuTarget.reloadClearingCache),
+            [.command, .shift])
         view.addItem(.separator())
         let fullscreen = NSMenuItem(
             title: "Enter Full Screen",
@@ -285,6 +288,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     }
     @objc func toggleSidebar() { controller?.toggleSidebar() }
     @objc func reload() { controller?.reload() }
+    @objc func reloadClearingCache() { controller?.reloadClearingCache() }
     @objc func goBack() { controller?.goBack() }
     @objc func goForward() { controller?.goForward() }
     @objc func focusAddressBar() { controller?.openCommandBar(mode: .current) }

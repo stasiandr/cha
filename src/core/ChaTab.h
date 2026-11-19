@@ -63,6 +63,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)goBack;
 - (void)goForward;
 - (void)reload;
+// ⇧⌘R: the site's caches emptied (the HTTP cache, its Cache Storage and
+// service workers), then a reload that fetches everything anew. Cookies
+// and site data stay: nobody is signed out.
+- (void)reloadClearingCache;
 - (void)stopLoading;
 - (void)focus;
 - (void)executeJavaScript:(NSString*)script;
