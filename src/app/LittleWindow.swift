@@ -127,7 +127,11 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
             window.orderFront(nil)
         } else {
             window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            window.makeMain()
+            // Only this window comes forward, over the app the link came
+            // from: activating the whole app also raised the main window,
+            // so the little one sat over cha instead of over Slack.
+            NSRunningApplication.current.activate(options: [])
             // Activation may still shift it (and the log says where it went).
             for delay in [0.05, 0.4] {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in

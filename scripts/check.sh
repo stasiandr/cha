@@ -124,6 +124,19 @@ for p in default work; do
   fi
 done
 
+step "a force quit leaves no Chromium session to restore"
+p="$PWD/build/check/profile-killed"; rm -rf "$p"
+CHA_HEADLESS=1 CHA_TEST=idle CHA_PROFILE="$p" build/cha.app/Contents/MacOS/cha >build/check/killed-1.log 2>&1 &
+pid=$!; sleep 6; kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+pkill -9 -f "profile-killed" 2>/dev/null
+wrote=$(ls "$p/Default/Sessions" 2>/dev/null | wc -l | tr -d ' ')
+CHA_HEADLESS=1 CHA_TEST=bench CHA_PROFILE="$p" build/cha.app/Contents/MacOS/cha >build/check/killed-2.log 2>&1
+if [ "$wrote" -gt 0 ] && grep -q 'SESSIONS removed .*/Default/Sessions' build/check/killed-2.log; then
+  echo "ok: Chromium's session ($wrote files) dropped at the next start"
+else
+  echo "force-quit FAILED: session files $wrote, $(grep -c SESSIONS build/check/killed-2.log) removed"; failed=$((failed + 1))
+fi
+
 step "profiles: accounts per space"
 run_scenario profiles 40; code=$?
 grep -E 'CHECK ' build/check/profiles.log | sed 's/^.*cha\[[^]]*\] //'

@@ -200,6 +200,20 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
         NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
     root = [support stringByAppendingPathComponent:@"cha"];
   }
+  // Chromium's own session (Sessions/ in each profile) is never wanted:
+  // tabs are cha's (state.json). After a force quit Chromium restored it
+  // and opened its own windows with the old tabs.
+  NSFileManager* files = NSFileManager.defaultManager;
+  for (NSString* name in [files contentsOfDirectoryAtPath:root error:nil]) {
+    if ([name isEqualToString:@"Default"] || [name hasPrefix:@"Profile-"]) {
+      NSString* sessions = [[root stringByAppendingPathComponent:name]
+          stringByAppendingPathComponent:@"Sessions"];
+      if ([files fileExistsAtPath:sessions]) {
+        [files removeItemAtPath:sessions error:nil];
+        fprintf(stderr, "SESSIONS removed %s\n", sessions.UTF8String);
+      }
+    }
+  }
   CefString(&settings.root_cache_path) = root.UTF8String;
   CefString(&settings.cache_path) =
       [root stringByAppendingPathComponent:@"Default"].UTF8String;
