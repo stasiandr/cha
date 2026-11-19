@@ -69,6 +69,13 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         return frame.integral
     }
 
+    static func screenName(_ rect: NSRect) -> String {
+        NSScreen.screens.max { a, b in
+            a.frame.intersection(rect).width * a.frame.intersection(rect).height
+                < b.frame.intersection(rect).width * b.frame.intersection(rect).height
+        }?.localizedName ?? "-"
+    }
+
     private init(url: String, main: BrowserController, over caller: NSRect?) {
         self.url = url
         self.main = main
@@ -88,8 +95,13 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         // It floats over the app the link came from until it is dealt with,
         // on whatever desktop that is: a full-screen app's included, rather
         // than taking you to cha's own desktop.
+        // It must open on the caller's display: .moveToActiveSpace sent it to
+        // the "active" desktop instead, which with a display per desktop
+        // could be the other monitor (where cha's main window is). Joining
+        // every desktop shows it right where its frame is, a full-screen
+        // app's desktop included; once on screen it settles into that one.
         window.level = .floating
-        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let background = NSVisualEffectView()
         background.material = .sidebar
@@ -116,6 +128,20 @@ final class LittleWindowController: NSObject, ObservableObject, NSWindowDelegate
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // Activation may still shift it (and the log says where it went).
+            for delay in [0.05, 0.4] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    guard let self else { return }
+                    let moved = !self.window.frame.isClose(to: frame)
+                    Diagnostics.linkLog(String(
+                        format: "little +%.2fs want %@ (%@) got %@ (%@)%@", delay,
+                        NSStringFromRect(frame), Self.screenName(frame),
+                        NSStringFromRect(self.window.frame), Self.screenName(self.window.frame),
+                        moved ? " → put back" : ""))
+                    if moved { self.window.setFrame(frame, display: true) }
+                    if delay > 0.1 { self.window.collectionBehavior = [.fullScreenAuxiliary] }
+                }
+            }
         }
         window.placeTrafficLights()
 

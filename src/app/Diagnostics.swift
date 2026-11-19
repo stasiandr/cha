@@ -63,6 +63,22 @@ enum Diagnostics {
     }
 }
 
+// Where links from other apps went (~/Library/Logs/cha/links.log, last
+// 200 lines): placement on several displays is hard to see from tests.
+extension Diagnostics {
+    static func linkLog(_ line: String) {
+        NSLog("LINK %@", line)
+        guard !quiet else { return }
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/cha")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("links.log")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        var lines = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append(stamp + " " + line)
+        try? lines.suffix(200).joined(separator: "\n").appending("\n").write(to: file, atomically: true, encoding: .utf8)
+    }
+}
+
 // The main window. In headless mode it may sit outside every screen, which
 // AppKit otherwise corrects.
 final class BrowserWindow: NSWindow {

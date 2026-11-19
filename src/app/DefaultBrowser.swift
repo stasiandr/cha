@@ -30,6 +30,11 @@ final class URLOpener: NSObject {
         // Who sent the link: its window is where the little window goes.
         let sender = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value
         callerFrame = Self.frontWindowFrame(of: sender.map { pid_t($0) })
+        let senderApp = sender.flatMap { NSRunningApplication(processIdentifier: pid_t($0))?.localizedName }
+        Diagnostics.linkLog(String(
+            format: "link from %@ (pid %d), front %@, caller window %@, mouse %@", senderApp ?? "-",
+            sender ?? 0, NSWorkspace.shared.frontmostApplication?.localizedName ?? "-",
+            callerFrame.map { NSStringFromRect($0) } ?? "none", NSStringFromPoint(NSEvent.mouseLocation)))
         open(url)
     }
 

@@ -469,7 +469,8 @@ enum TestScenarios {
                 SpaceChecks.check(
                     "it opens on the desktop in use, full-screen apps included",
                     little?.window.collectionBehavior.contains(.fullScreenAuxiliary) == true
-                        && little?.window.collectionBehavior.contains(.moveToActiveSpace) == true)
+                        && little?.window.collectionBehavior.contains(.canJoinAllSpaces) == true
+                        && little?.window.collectionBehavior.contains(.moveToActiveSpace) == false)
                 if let little { TestScenarios.shotWindow(little.window, "little-window") }
                 // Placement over the calling app's window.
                 if let screen = NSScreen.screens.first?.visibleFrame {
