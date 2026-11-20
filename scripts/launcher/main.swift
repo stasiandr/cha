@@ -69,14 +69,18 @@ final class Launcher: NSObject, NSApplicationDelegate {
         if ownProfile,
             let running = NSRunningApplication.runningApplications(withBundleIdentifier: chaBundleID).first
         {
-            // A cha with no window on screen is one that is quitting (it hides
-            // its windows at once, then writes the profile out for a few
-            // seconds): bringing it forward showed nothing. Wait for it to go,
-            // then open a fresh one.
-            if Self.hasWindowOnScreen(running.processIdentifier) {
+            // A quitting cha leaves the Dock at once (it hides its windows,
+            // then writes the profile out for a few seconds): bringing it
+            // forward would show nothing, so wait for it to go and open a
+            // fresh one. Windows on screen tell nothing: cha in full screen or
+            // on another desktop has none on this one.
+            if running.activationPolicy == .regular {
                 note("already running: bringing it forward")
-                if !headless { running.activate() }
-                NSApp.terminate(nil)
+                if headless {
+                    NSApp.terminate(nil)
+                } else {
+                    bringForward(running)
+                }
                 return
             }
             note("running but quitting: waiting for it to end")
@@ -99,16 +103,6 @@ final class Launcher: NSObject, NSApplicationDelegate {
                     self.startBuild(reason: built == nil ? "cha ещё не собран" : "Код изменился")
                 }
             }
-        }
-    }
-
-    static func hasWindowOnScreen(_ pid: pid_t) -> Bool {
-        guard
-            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                as? [[String: Any]]
-        else { return true }
-        return list.contains {
-            ($0[kCGWindowOwnerPID as String] as? pid_t) == pid && ($0[kCGWindowLayer as String] as? Int) == 0
         }
     }
 
@@ -264,6 +258,17 @@ final class Launcher: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Opening cha
+
+    /// Through LaunchServices, like a click in the Dock: it switches to the
+    /// desktop or full screen cha is on and isn't refused the way
+    /// NSRunningApplication.activate() is for an app that isn't frontmost.
+    func bringForward(_ running: NSRunningApplication) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: running.bundleURL ?? chaApp, configuration: configuration) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
 
     func launchCha() {
         let configuration = NSWorkspace.OpenConfiguration()

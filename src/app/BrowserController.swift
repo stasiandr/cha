@@ -454,6 +454,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             }
         }
         window?.orderOut(nil)
+        // Leaving the Dock says to other apps that cha is on its way out: the
+        // launcher (hop, Dock) waits for it to end instead of bringing forward
+        // a cha with nothing left to show.
+        if !Diagnostics.headless { NSApp.setActivationPolicy(.accessory) }
         Diagnostics.mark("windows-hidden")
 
         quitCompletion = completion
