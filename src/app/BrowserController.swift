@@ -496,6 +496,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     // New tabs go to the top of today's list, as in Arc.
     func newTab(url: String = "about:blank", pinned: Bool = false) {
+        if ChaTab.isExternalURL(url) {
+            ExternalLinks.handle(url, userGesture: true)  // no empty tab for another app's link
+            return
+        }
         var space = activeSpace
         let tab = TabData(url: url, isPinned: pinned)
         let firstUnpinned = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
@@ -965,6 +969,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func navigate(to input: String) {
         let url = normalizedURL(from: input)
+        if ChaTab.isExternalURL(url) {
+            ExternalLinks.handle(url, userGesture: true)
+            return
+        }
         guard let id = activeSpace.activeTabID else {
             newTab(url: url)
             return

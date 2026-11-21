@@ -178,6 +178,24 @@ NSString* SiteOf(NSString* url) {
   return [labels componentsJoinedByString:@"."];
 }
 
+// Schemes Chromium shows itself; anything else belongs to another app.
+BOOL IsExternalURL(NSString* url) {
+  NSRange colon = [url rangeOfString:@":"];
+  if (colon.location == NSNotFound || colon.location == 0) return NO;
+  NSString* scheme = [url substringToIndex:colon.location].lowercaseString;
+  NSCharacterSet* bad = [[NSCharacterSet characterSetWithCharactersInString:
+      @"abcdefghijklmnopqrstuvwxyz0123456789+.-"] invertedSet];
+  if ([scheme rangeOfCharacterFromSet:bad].location != NSNotFound) return NO;
+  static NSSet* web = [NSSet setWithArray:@[
+    @"http", @"https", @"about", @"data", @"blob", @"file", @"filesystem",
+    @"javascript", @"chrome", @"chrome-extension", @"chrome-untrusted",
+    @"chrome-error", @"devtools", @"view-source", @"ws", @"wss"
+  ]];
+  return ![web containsObject:scheme];
+}
+
+static void (^gOpenExternal)(NSString*, BOOL);
+
 // Live downloads' callbacks, for cancelling from the downloads list.
 std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>>& DownloadCallbacks() {
   static std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>> callbacks;
@@ -276,6 +294,14 @@ class TabHost : public CefClient,
                       bool user_gesture,
                       bool is_redirect) override {
     ChaTab* tab = tab_;
+    NSString* url = ToNSString(request->GetURL());
+    if (gOpenExternal && IsExternalURL(url)) {
+      BOOL gesture = user_gesture;
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (gOpenExternal) gOpenExternal(url, gesture);
+      });
+      return true;  // Cancelled: the page stays where it is.
+    }
     if (!tab.keepsItsSite || !frame->IsMain() || !user_gesture || is_redirect) {
       return false;
     }
@@ -636,6 +662,18 @@ static void (^gTabLog)(NSString*);
   gTabLog = [log copy];
 }
 
++ (void (^)(NSString*, BOOL))openExternal {
+  return gOpenExternal;
+}
+
++ (void)setOpenExternal:(void (^)(NSString*, BOOL))openExternal {
+  gOpenExternal = [openExternal copy];
+}
+
++ (BOOL)isExternalURL:(NSString*)url {
+  return IsExternalURL(url);
+}
+
 static NSString* const kSelectionMarker = @"__cha_selection__";
 
 - (void)fetchSelection:(void (^)(NSString*))handler {
@@ -709,6 +747,10 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
 }
 
 - (void)loadURL:(NSString*)url {
+  if (gOpenExternal && IsExternalURL(url)) {
+    gOpenExternal(url, YES);  // typed or opened from elsewhere: asked for
+    return;
+  }
   if (auto browser = _host ? _host->browser() : nullptr) {
     browser->GetMainFrame()->LoadURL(url.UTF8String);
   }

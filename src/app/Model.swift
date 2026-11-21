@@ -276,6 +276,10 @@ enum FaviconStore {
 func normalizedURL(from input: String) -> String {
     let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
     if text.isEmpty { return "about:blank" }
+    // host:port is a local server, not a scheme.
+    if text.range(of: "^[a-zA-Z0-9.-]+:[0-9]+(/|$)", options: .regularExpression) != nil {
+        return "http://" + text
+    }
     // Any scheme goes through as is: https://, but also chrome:, data:, about:.
     if text.range(of: "^[a-zA-Z][a-zA-Z0-9+.-]*:", options: .regularExpression) != nil {
         return text

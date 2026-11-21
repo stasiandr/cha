@@ -78,6 +78,9 @@ stands, is in [docs/arc-parity.md](docs/arc-parity.md).
   workers) and load everything anew; cookies and site data stay
 - ⇧⌘N new space, ⌃1…⌃9 go to a space, ⌥⌘← / ⌥⌘→ previous / next space
 
+Links to other apps (`slack:`, `mailto:`, `zoommtg:`…) open that app: at once
+for a click or a typed address; a page sending itself there asks first.
+
 ## Spaces
 
 As in Arc. Favourites sit on top as tiles shared by every space. Below them

@@ -530,6 +530,47 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "external":
+            // Links to other apps go to macOS instead of nowhere: a click and a
+            // typed address open the app; a page sending itself there asks
+            // first. Nothing is opened for real: the checks record it.
+            var opened: [String] = []
+            var asked: [String] = []
+            ExternalLinks.open = { opened.append($0.absoluteString) }
+            ExternalLinks.ask = { app, answer in asked.append(app); answer(true) }
+            func title() -> String { controller.activeTab?.title ?? "-" }
+            let page = "data:text/html,<title>here</title><a href='mailto:click@example.com'"
+                + " style='display:block;width:100vw;height:100vh'>link</a>"
+            var tabs = 0
+            at(1) { controller.newTab(url: page) }
+            at(3) {
+                tabs = controller.activeSpace.tabs.count
+                controller.activeTab?.clickAt(x: 40, y: 40)
+            }
+            at(4) {
+                SpaceChecks.check("a click on a mailto: link opens Mail", opened == ["mailto:click@example.com"] && asked.isEmpty, "\(opened) \(asked)")
+                controller.activeTab?.executeJavaScript("setTimeout(() => location.href = 'mailto:page@example.com', 10)")
+            }
+            at(5) {
+                SpaceChecks.check("a page sending itself to an app asks first", asked.count == 1 && opened.last == "mailto:page@example.com", "\(opened) \(asked)")
+                controller.navigate(to: "mailto:typed@example.com")
+                controller.newTab(url: "mailto:newtab@example.com")
+                controller.activeTab?.executeJavaScript("location.href = 'nosuchapp-cha-test:x'")
+            }
+            at(6.5) {
+                SpaceChecks.check("a typed address and a new tab open the app at once",
+                                  opened.suffix(2) == ["mailto:typed@example.com", "mailto:newtab@example.com"] && asked.count == 1, "\(opened) \(asked)")
+                SpaceChecks.check("the page and the tabs stay as they were",
+                                  title() == "here" && controller.activeSpace.tabs.count == tabs, "\(title()) \(controller.activeSpace.tabs.count)/\(tabs)")
+                SpaceChecks.check("schemes: web ones stay, others go out",
+                                  !ChaTab.isExternalURL("https://a.b") && !ChaTab.isExternalURL("about:blank")
+                                  && !ChaTab.isExternalURL("data:text/plain,x") && normalizedURL(from: "localhost:3000") == "http://localhost:3000"
+                                  && ChaTab.isExternalURL("slack://T1/magic-login/x?id=1") && ChaTab.isExternalURL("mailto:a@b"), "")
+                SpaceChecks.check("a sign-in token stays out of the log", ExternalLinks.scheme(of: "slack://T/magic-login/secret") == "slack", "")
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "pip":
             // Picture in picture without opening the floating window (it
             // would land on the screen in use): the user-gesture path, and

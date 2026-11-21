@@ -110,6 +110,13 @@ if [ "$hard" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ha
   echo "⇧⌘R FAILED"; failed=$((failed + 1))
 fi
 
+step "links to other apps (slack:, mailto:) go to macOS"
+run_scenario external 30; code=$?
+grep -E 'CHECK ' build/check/external.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/external.log; then
+  echo "external links FAILED"; failed=$((failed + 1))
+fi
+
 step "sign-ins survive a restart (default profile and a space's own)"
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 cookies=build/check/cookies.log; rm -f "$cookies"
