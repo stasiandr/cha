@@ -793,6 +793,9 @@ enum TestScenarios {
                                   && !ChaTab.isExternalURL("data:text/plain,x") && normalizedURL(from: "localhost:3000") == "http://localhost:3000"
                                   && ChaTab.isExternalURL("slack://T1/magic-login/x?id=1") && ChaTab.isExternalURL("mailto:a@b"), "")
                 SpaceChecks.check("a sign-in token stays out of the log", ExternalLinks.scheme(of: "slack://T/magic-login/secret") == "slack", "")
+                let logged = Diagnostics.redacted("close (tab) http://127.0.0.1:5/?state=abc&iss=x&code=4/0Secret&scope=s")
+                SpaceChecks.check("sign-in codes in URLs are hidden in the logs",
+                                  !logged.contains("0Secret") && !logged.contains("abc") && logged.contains("iss=x"), logged)
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }

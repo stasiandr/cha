@@ -480,6 +480,7 @@ class TabHost : public CefClient,
   }
   void OnMediaAccessChange(CefRefPtr<CefBrowser>, bool video, bool audio) override {
     ChaTab* tab = tab_;
+    if (gTabLog) gTabLog([NSString stringWithFormat:@"camera %d microphone %d: %@", video, audio, tab.currentURL]);
     tab.usesCameraOrMicrophone = video || audio;
     [tab cefChanged];
   }
@@ -533,6 +534,7 @@ class TabHost : public CefClient,
     // Document picture in picture (Meet's floating call window) is left to
     // Chromium, with a client of its own.
     if (disposition == CEF_WOD_NEW_PICTURE_IN_PICTURE) {
+      if (gTabLog) gTabLog([@"floating window asked for: " stringByAppendingString:tab_.currentURL ?: @"-"]);
       if (!gAllowsFloatingWindows) return true;  // the checks: no window on screen
       client = new PipClient(tab_);
       return false;  // Chromium's own floating window

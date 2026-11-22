@@ -72,13 +72,22 @@ enum Diagnostics {
 // 200 lines): placement on several displays is hard to see from tests.
 extension Diagnostics {
     static func linkLog(_ line: String) {
+        let line = redacted(line)
         NSLog("LINK %@", line)
         fileLog("links.log", line)
+    }
+
+    /// Sign-in codes and tokens in URLs stay out of the logs.
+    static func redacted(_ line: String) -> String {
+        line.replacingOccurrences(
+            of: #"([?&#](code|token|access_token|id_token|refresh_token|state|secret|password|key|sig|signature)=)[^&#\s]+"#,
+            with: "$1…", options: [.regularExpression, .caseInsensitive])
     }
 
     // Every page closed and whether its browser went: a page heard after
     // its tab was closed shows up here.
     static func tabLog(_ line: String) {
+        let line = redacted(line)
         NSLog("TAB %@", line)
         fileLog("tabs.log", line)
     }

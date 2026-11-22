@@ -38,6 +38,18 @@ class HelperApp : public CefApp, public CefRenderProcessHandler {
     if (action === 'enterpictureinpicture') window.__chaEnterPiP = handler;
     return set(action, handler);
   };
+  // What became of a floating-window request, for cha's tabs.log.
+  const dpip = window.documentPictureInPicture;
+  if (dpip && !dpip.__cha) {
+    Object.defineProperty(dpip, '__cha', { value: true });
+    const request = dpip.requestWindow.bind(dpip);
+    dpip.requestWindow = (options) => {
+      const active = navigator.userActivation && navigator.userActivation.isActive;
+      return request(options).then(
+        w => { console.log('__cha_probe__ floating window given to ' + location.host); return w; },
+        e => { console.log('__cha_probe__ floating window refused to ' + location.host + ' (activation ' + active + '): ' + e.name + ' ' + e.message); throw e; });
+    };
+  }
 })();
 )JS",
                   CefString(), 0, result, exception);
