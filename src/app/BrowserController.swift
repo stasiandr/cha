@@ -504,9 +504,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let tab = TabData(url: url, isPinned: pinned)
         let firstUnpinned = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
         space.tabs.insert(tab, at: firstUnpinned)
-        space.activeTabID = tab.id
         activeSpace = space
-        activateTab(tab.id)
+        activateTab(tab.id)  // makes it the active one, leaving the old tab properly
         if url == "about:blank" { focusAddressBar() }
     }
 
@@ -820,7 +819,6 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let firstUnpinned = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
         let index = min(max(closed.index, tab.isPinned ? 0 : firstUnpinned), space.tabs.count)
         space.tabs.insert(tab, at: index)
-        space.activeTabID = tab.id
         activeSpace = space
         sidebarPage = .tabs
         activateTab(tab.id)

@@ -110,6 +110,25 @@ if [ "$hard" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ha
   echo "⇧⌘R FAILED"; failed=$((failed + 1))
 fi
 
+step "picture in picture when leaving a call or a video tab"
+run_scenario callpip 30; code=$?
+grep -E 'CHECK ' build/check/callpip.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/callpip.log; then
+  echo "call picture in picture FAILED"; failed=$((failed + 1))
+fi
+
+step "Google Calendar: sign-in, next meeting, Join, reminders (fake Google)"
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+glog=build/check/google-fake.log; rm -f "$glog"
+python3 scripts/google-fake.py "$port" "$glog" & server=$!
+sleep 0.5
+CHA_GOOGLE_BASE="http://127.0.0.1:$port" CHA_GOOGLE_LOG="$PWD/$glog" run_scenario calendar 30; code=$?
+kill "$server" 2>/dev/null
+grep -E 'CHECK ' build/check/calendar.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/calendar.log; then
+  echo "calendar FAILED"; failed=$((failed + 1))
+fi
+
 step "links to other apps (slack:, mailto:) go to macOS"
 run_scenario external 30; code=$?
 grep -E 'CHECK ' build/check/external.log | sed 's/^.*cha\[[^]]*\] //'
@@ -199,6 +218,15 @@ if [ "$mode" = window ]; then
   grep -E 'CHECK (FAIL|skip)|CHECKS' build/check/ui.log | sed 's/^.*cha\[[^]]*\] //'
   if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ui.log; then
     echo "ui FAILED (exit $code)"; failed=$((failed + 1))
+  fi
+fi
+
+if [ "$mode" = window ] && [ "$real_input" = 1 ]; then
+  step "Meet's floating window (document picture in picture, on screen)"
+  run_scenario docpip 30; code=$?
+  grep -E 'CHECK ' build/check/docpip.log | sed 's/^.*cha\[[^]]*\] //'
+  if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/docpip.log; then
+    echo "docpip FAILED"; failed=$((failed + 1))
   fi
 fi
 

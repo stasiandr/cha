@@ -19,6 +19,11 @@ enum MainMenu {
             action: #selector(MenuTarget.makeDefaultBrowser), keyEquivalent: "")
         makeDefault.target = target
         app.addItem(makeDefault)
+        let calendar = NSMenuItem(
+            title: "Connect Google Calendar…",
+            action: #selector(MenuTarget.toggleCalendar), keyEquivalent: "")
+        calendar.target = target
+        app.addItem(calendar)
         app.addItem(.separator())
         app.addItem(
             withTitle: "Hide cha", action: #selector(NSApplication.hide(_:)),
@@ -188,7 +193,15 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
             item.state = isDefault ? .on : .off
             return !isDefault
         }
+        if item.action == #selector(toggleCalendar) {
+            item.title = GoogleCalendar.shared.connected ? "Disconnect Google Calendar" : "Connect Google Calendar…"
+        }
         return true
+    }
+
+    @objc func toggleCalendar() {
+        let calendar = GoogleCalendar.shared
+        if calendar.connected { calendar.disconnect() } else { calendar.connect() }
     }
 
     static let shared = MenuTarget()

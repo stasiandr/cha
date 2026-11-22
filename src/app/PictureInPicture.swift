@@ -19,6 +19,8 @@ enum PictureInPicture {
     static let toggle = """
         (() => {
           if (document.pictureInPictureElement) { document.exitPictureInPicture(); return 'exit'; }
+          if (window.documentPictureInPicture?.window) { documentPictureInPicture.window.close(); return 'exit'; }
+          if (window.__chaEnterPiP) { try { window.__chaEnterPiP({ action: 'enterpictureinpicture' }); return 'site'; } catch (e) {} }
           \(pickVideo)
           if (!video) return 'none';
           video.requestPictureInPicture();
@@ -26,19 +28,36 @@ enum PictureInPicture {
         })()
         """
 
-    // Leaving the tab: only a video that is playing and can be heard.
-    static let enterIfPlaying = """
+    // Leaving the tab. A site with its own automatic picture in picture
+    // (Meet and other calls: a floating window with the call's tiles and
+    // buttons) gets it, as in Chrome, when it is in a call or plays sound.
+    // Otherwise a playing video that can be heard floats; in a call, the
+    // biggest playing video even with no sound of its own (the tiles are
+    // muted, the call's sound plays apart).
+    static func enterOnLeaving(call: Bool) -> String {
+        """
         (() => {
-          if (document.pictureInPictureElement) return;
-          const video = [...document.querySelectorAll('video')]
-            .find(v => !v.paused && !v.ended && !v.muted && v.volume > 0
-                       && v.readyState >= 2 && !v.disablePictureInPicture);
-          if (video) video.requestPictureInPicture();
+          const call = \(call);
+          if (document.pictureInPictureElement || window.documentPictureInPicture?.window) return 'already';
+          const playing = [...document.querySelectorAll('video')]
+            .filter(v => !v.paused && !v.ended && v.readyState >= 2 && !v.disablePictureInPicture);
+          const audible = [...document.querySelectorAll('video, audio')]
+            .some(m => !m.paused && !m.ended && !m.muted && m.volume > 0);
+          if (window.__chaEnterPiP && (call || audible)) {
+            try { window.__chaEnterPiP({ action: 'enterpictureinpicture' }); return 'site'; } catch (e) {}
+          }
+          const video = playing.find(v => !v.muted && v.volume > 0)
+            || (call ? playing.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0] : null);
+          if (video) { video.requestPictureInPicture(); return 'video'; }
+          return 'none';
         })()
         """
+    }
 
+    // Back to the tab: whatever floated comes home.
     static let exitIfFloating = """
         if (document.pictureInPictureElement) document.exitPictureInPicture();
+        if (window.documentPictureInPicture?.window) documentPictureInPicture.window.close();
         """
 }
 
@@ -55,7 +74,7 @@ extension BrowserController {
     func pictureInPictureForSwitch(from old: UUID?, to new: UUID?) {
         guard Self.autoPictureInPicture, old != new else { return }
         if let old, let tab = liveTabs[old] {
-            tab.executeJavaScript(withUserGesture: PictureInPicture.enterIfPlaying)
+            tab.executeJavaScript(withUserGesture: PictureInPicture.enterOnLeaving(call: tab.usesCameraOrMicrophone))
         }
         if let new, let tab = liveTabs[new] {
             tab.executeJavaScript(withUserGesture: PictureInPicture.exitIfFloating)

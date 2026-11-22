@@ -81,6 +81,20 @@ stands, is in [docs/arc-parity.md](docs/arc-parity.md).
 Links to other apps (`slack:`, `mailto:`, `zoommtg:`…) open that app: at once
 for a click or a typed address; a page sending itself there asks first.
 
+## Calls and calendar
+
+- Leaving a tab with a call (Meet, any site using the camera or microphone) or
+  a video with sound floats it in picture in picture; coming back brings it
+  home. Sites with their own floating window (Meet's tiles and buttons) get
+  theirs, as in Chrome. ⌥⌘P does the same by hand.
+- cha menu → Connect Google Calendar…: the next meeting sits at the bottom of
+  the sidebar from 30 minutes before (Join opens the call in a tab), and a
+  notification comes a minute before a meeting with a call link. It signs in
+  with your own OAuth client: Google Cloud Console → enable the Google
+  Calendar API → Credentials → OAuth client ID → Desktop app → download the
+  JSON, which cha asks for. Read-only access to events; the token stays in
+  cha's folder (`google-token.json`, readable only by you).
+
 ## Spaces
 
 As in Arc. Favourites sit on top as tiles shared by every space. Below them

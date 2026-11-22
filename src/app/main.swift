@@ -3,6 +3,7 @@ import AppKit
 Diagnostics.mark("main")
 ChaTab.log = { Diagnostics.tabLog($0) }
 ExternalLinks.install()
+ChaTab.allowsFloatingWindows = !Diagnostics.headless || ProcessInfo.processInfo.environment["CHA_FLOATING"] != nil
 
 // CEF needs its own NSApplication subclass in place before any UI exists.
 ChaEngine.installApplication()
@@ -57,6 +58,7 @@ final class Launcher: NSObject, ChaEngineDelegate {
         controller.showWindow()
         URLOpener.shared.install()
         URLOpener.shared.controller = controller
+        controller.startCalendar()
         if let scenario = ProcessInfo.processInfo.environment["CHA_TEST"] {
             TestScenarios.run(scenario, controller: controller)
         }

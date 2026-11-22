@@ -27,6 +27,8 @@
 @property(nonatomic) BOOL isLoading;
 @property(nonatomic) BOOL canGoBack;
 @property(nonatomic) BOOL canGoForward;
+@property(nonatomic) BOOL usesCameraOrMicrophone;
+@property(nonatomic) BOOL hasFloatingWindow;
 - (void)cefWindowCreated;
 - (void)cefWindowDestroyed:(BOOL)browserAlive;
 - (void)cefBrowserClosed;
@@ -221,6 +223,23 @@ NSString* DownloadPath(NSString* suggested) {
   }
   return path;
 }
+
+// The client of a page's document picture-in-picture window (Meet's floating
+// call): Chromium makes and closes that window itself. It must not share the
+// tab's client, or the floating window closing would end the tab.
+class PipClient : public CefClient, public CefLifeSpanHandler {
+ public:
+  explicit PipClient(ChaTab* tab) : tab_(tab) {}
+  CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+  void OnAfterCreated(CefRefPtr<CefBrowser>) override { tab_.hasFloatingWindow = YES; }
+  void OnBeforeClose(CefRefPtr<CefBrowser>) override { tab_.hasFloatingWindow = NO; }
+
+ private:
+  __weak ChaTab* tab_;
+  IMPLEMENT_REFCOUNTING(PipClient);
+};
+
+static BOOL gAllowsFloatingWindows = YES;
 
 class TabHost : public CefClient,
                 public CefCommandHandler,
@@ -452,6 +471,11 @@ class TabHost : public CefClient,
     tab.currentURL = ToNSString(url);
     [tab cefChanged];
   }
+  void OnMediaAccessChange(CefRefPtr<CefBrowser>, bool video, bool audio) override {
+    ChaTab* tab = tab_;
+    tab.usesCameraOrMicrophone = video || audio;
+    [tab cefChanged];
+  }
   void OnFaviconURLChange(CefRefPtr<CefBrowser> browser,
                           const std::vector<CefString>& urls) override {
     if (urls.empty()) {
@@ -493,16 +517,18 @@ class TabHost : public CefClient,
                      bool user_gesture,
                      const CefPopupFeatures&,
                      CefWindowInfo&,
-                     CefRefPtr<CefClient>&,
+                     CefRefPtr<CefClient>& client,
                      CefBrowserSettings&,
                      CefRefPtr<CefDictionaryValue>&,
                      bool*) override {
     // ⌘-click on a link arrives here too, as a background tab; ⇧-click as a
     // new window, which in cha (as in Arc) is a Peek.
-    // Document picture in picture (Meet's floating call window) isn't
-    // supported yet: refused, rather than opened as an empty tab.
+    // Document picture in picture (Meet's floating call window) is left to
+    // Chromium, with a client of its own.
     if (disposition == CEF_WOD_NEW_PICTURE_IN_PICTURE) {
-      return true;
+      if (!gAllowsFloatingWindows) return true;  // the checks: no window on screen
+      client = new PipClient(tab_);
+      return false;  // Chromium's own floating window
     }
     NSString* url = ToNSString(target_url);
     BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
@@ -517,7 +543,9 @@ class TabHost : public CefClient,
     });
     return true;  // Handled: the app opens its own tab instead.
   }
-  void OnAfterCreated(CefRefPtr<CefBrowser> browser) override { alive = browser; }
+  void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+    alive = browser;
+  }
   void OnBeforeClose(CefRefPtr<CefBrowser>) override {
     alive = nullptr;
     [tab_ cefBrowserClosed];
@@ -668,6 +696,14 @@ static void (^gTabLog)(NSString*);
 
 + (void)setOpenExternal:(void (^)(NSString*, BOOL))openExternal {
   gOpenExternal = [openExternal copy];
+}
+
++ (BOOL)allowsFloatingWindows {
+  return gAllowsFloatingWindows;
+}
+
++ (void)setAllowsFloatingWindows:(BOOL)allows {
+  gAllowsFloatingWindows = allows;
 }
 
 + (BOOL)isExternalURL:(NSString*)url {

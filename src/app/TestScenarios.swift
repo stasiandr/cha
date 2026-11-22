@@ -441,8 +441,8 @@ enum TestScenarios {
                     "w => document.title = 'PIP open', e => document.title = 'PIP error ' + e.name)")
             }
             at(23) {
-                // Not supported yet: the request fails, and no empty tab
-                // stands in for the floating window (it used to).
+                // Off in the checks (it would open on screen): the request
+                // fails, and no empty tab stands in for the floating window.
                 SpaceChecks.check("a floating-window request opens no empty tab",
                     controller.activeSpace.tabs.count == tabCount && controller.activeTab === floating,
                     "\(controller.activeSpace.tabs.count) tabs, was \(tabCount); \(floating?.title ?? "-")")
@@ -526,6 +526,171 @@ enum TestScenarios {
             }
             at(8) {
                 SpaceChecks.check("⇧⌘R empties the cache, reloads, keeps site data", title() == "AFTER 0 reloaded kept", title())
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
+        case "calendar":
+            // Google Calendar against scripts/google-fake.py (CHA_GOOGLE_BASE):
+            // sign-in in a tab with PKCE, the next meeting in the sidebar,
+            // Join, reminders, the token refreshed, disconnecting.
+            let calendar = GoogleCalendar.shared
+            let log = ProcessInfo.processInfo.environment["CHA_GOOGLE_LOG"] ?? "/dev/null"
+            func fakeLog() -> String { (try? String(contentsOfFile: log, encoding: .utf8)) ?? "" }
+            let client = #"{"installed": {"client_id": "test-client", "client_secret": "test-secret"}}"#
+            try? client.write(to: Persistence.directory.appendingPathComponent("google-client.json"), atomically: true, encoding: .utf8)
+            var reminders: [(event: CalendarEvent, at: Date)] = []
+            calendar.schedule = { reminders = $0 }
+            var tabsBefore = 0
+            at(1) {
+                tabsBefore = controller.activeSpace.tabs.count
+                calendar.connect()
+            }
+            at(5) {
+                let token = Persistence.directory.appendingPathComponent("google-token.json")
+                let mode = (try? FileManager.default.attributesOfItem(atPath: token.path)[.posixPermissions] as? Int) ?? 0
+                SpaceChecks.check("signing in through a tab connects", calendar.connected && mode == 0o600, "\(calendar.connected) \(String(mode, radix: 8)) \(calendar.problem ?? "")")
+                SpaceChecks.check("with PKCE", fakeLog().contains("token code pkce=True"), fakeLog())
+                SpaceChecks.check("the sign-in tab closes by itself", controller.activeSpace.tabs.count == tabsBefore,
+                                  "\(controller.activeSpace.tabs.map(\.url))")
+                SpaceChecks.check("meetings only: declined, all-day, cancelled and past ones are left out",
+                                  calendar.events.map(\.id) == ["now", "zoom", "later"], "\(calendar.events.map(\.id))")
+                SpaceChecks.check("the meeting going on is the next one", calendar.next?.id == "now", calendar.next?.id ?? "-")
+                SpaceChecks.check("call links: Meet's, and Zoom's from the place",
+                                  calendar.events.first?.joinURL?.path == "/meet/abc-defg-hij"
+                                  && (calendar.events.count > 1 ? calendar.events[1].joinURL?.host : nil) == "example.zoom.us", "\(calendar.events.map { $0.joinURL?.absoluteString ?? "-" })")
+                SpaceChecks.check("a reminder a minute before each upcoming call",
+                                  reminders.map(\.event.id) == ["zoom"]
+                                  && reminders.first.map { abs($0.at.timeIntervalSince($0.event.start) + 60) < 1 } == true,
+                                  "\(reminders.map(\.event.id))")
+                SpaceChecks.check("the card is in the sidebar with Join",
+                                  UIFrames.frames["meetingCard"] != nil && UIFrames.frames["meetingJoin"] != nil)
+                SpaceChecks.check("it says it's on now", calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("Now · until") == true)
+                TestScenarios.shot("calendar-now")
+                if let url = calendar.next?.joinURL { controller.joinMeeting(url) }
+            }
+            at(7) {
+                SpaceChecks.check("Join opens the call in a tab", controller.activeTab?.currentURL.contains("/meet/abc-defg-hij") == true,
+                                  controller.activeTab?.currentURL ?? "-")
+                calendar.dismissed.insert("now")
+                calendar.refresh()  // the access token has run out by now
+            }
+            at(9) {
+                SpaceChecks.check("an expired access token is refreshed", fakeLog().contains("token refresh ok=True")
+                                  && fakeLog().components(separatedBy: "events valid=True").count >= 3, fakeLog())
+                SpaceChecks.check("hiding a meeting brings up the next", calendar.next?.id == "zoom"
+                                  && calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("In 2") == true
+                                  && UIFrames.frames["meetingCard"] != nil, calendar.next.map { MeetingCard.when($0, now: Date()) } ?? "-")
+                TestScenarios.shot("calendar-soon")
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+            }
+            at(9.5) {
+                TestScenarios.shot("calendar-soon-dark")
+                calendar.disconnect()
+            }
+            at(10.5) {
+                let token = Persistence.directory.appendingPathComponent("google-token.json")
+                SpaceChecks.check("disconnecting forgets the token and the meetings",
+                                  !calendar.connected && !FileManager.default.fileExists(atPath: token.path)
+                                  && calendar.events.isEmpty && reminders.isEmpty && UIFrames.frames["meetingCard"] == nil)
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
+        case "callpip":
+            // Leaving a tab: a site with its own automatic picture in picture
+            // (Meet) gets it called when it plays sound or is in a call; a call
+            // without one floats its biggest video. No floating window opens
+            // here (requestPictureInPicture is stubbed, document PiP is off).
+            func title(_ t: ChaTab?) -> String { t?.title ?? "-" }
+            let site = "data:text/html,<title>site</title><canvas id=c width=64 height=36></canvas><video id=v></video><script>"
+                + "navigator.mediaSession.setActionHandler('enterpictureinpicture', () => document.title = 'AUTO site');"
+                + "const c = document.getElementById('c'), x = c.getContext('2d');"
+                + "setInterval(() => { x.fillStyle = 'rgb(' + Math.floor(Math.random()*255) + ',90,140)'; x.fillRect(0,0,64,36); }, 50);"
+                + "document.getElementById('v').srcObject = c.captureStream(20);</script>"
+            var a: ChaTab?
+            var aID: UUID?
+            at(1) { controller.newTab(url: site) }
+            at(3) {
+                a = controller.activeTab
+                aID = controller.activeSpace.activeTabID
+                a?.executeJavaScript(withUserGesture:
+                    "document.getElementById('v').play().then(() => document.title = 'playing ' + !!window.__chaEnterPiP)")
+            }
+            at(4) {
+                SpaceChecks.check("the site's own picture-in-picture handler is kept", title(a) == "playing true", title(a))
+                controller.newTab(url: "data:text/html,<title>other</title>")
+            }
+            at(5.5) {
+                SpaceChecks.check("leaving a tab that plays calls the site's picture in picture", title(a) == "AUTO site", title(a))
+                if let aID { controller.activateTab(aID) }
+            }
+            var quiet: ChaTab?
+            // Stands in for the real floating window, which would open on screen.
+            let stub = "HTMLVideoElement.prototype.requestPictureInPicture = function () { document.title = 'would ' + this.id; return Promise.resolve(); };"
+            at(6.5) {
+                controller.newTab(url: "data:text/html,<title>quiet</title><script>"
+                    + "navigator.mediaSession.setActionHandler('enterpictureinpicture', () => document.title = 'AUTO quiet');</script>")
+            }
+            at(8) {
+                quiet = controller.activeTab
+                controller.newTab(url: "data:text/html,<title>other2</title>")
+            }
+            at(9.5) {
+                SpaceChecks.check("a silent page out of a call is left alone", title(quiet) == "quiet", title(quiet))
+                if let id = controller.activeSpace.tabs.first(where: { controller.liveTabs[$0.id] === quiet })?.id {
+                    controller.activateTab(id)  // its videos play while it is on screen
+                }
+                // A call with muted tiles: the biggest playing one floats.
+                quiet?.executeJavaScript(withUserGesture:
+                    "document.body.innerHTML = '<canvas id=c width=64 height=36></canvas><video id=small muted width=40></video><video id=big muted width=320></video>';"
+                    + "window.__chaEnterPiP = null;"
+                    + "const c = document.getElementById('c'), x = c.getContext('2d'); setInterval(() => x.fillRect(0, 0, Math.random() * 64, 36), 50);"
+                    + "Promise.all(['small', 'big'].map(id => { const v = document.getElementById(id); v.srcObject = c.captureStream(20);"
+                    + " return new Promise(r => { v.onplaying = r; v.play(); }); })).then(() => document.title = 'tiles playing');")
+            }
+            at(11) {
+                SpaceChecks.check("a call's muted tiles play", title(quiet) == "tiles playing", title(quiet))
+                quiet?.executeJavaScript(withUserGesture: stub + "document.title = 'r ' + " + PictureInPicture.enterOnLeaving(call: true))
+            }
+            at(11.5) {
+                SpaceChecks.check("in a call the biggest playing video floats", title(quiet) == "r video", title(quiet))
+                quiet?.executeJavaScript(withUserGesture: "document.title = 'r ' + " + PictureInPicture.enterOnLeaving(call: false))
+            }
+            at(12.5) {
+                SpaceChecks.check("muted videos out of a call stay", title(quiet) == "r none", title(quiet))
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
+        case "docpip":
+            // The real floating window (opens on screen: run when nobody is
+            // at the Mac, or with CHA_SCREEN on another display).
+            var t: ChaTab?
+            var tabs = 0
+            at(1) { controller.newTab(url: "data:text/html,<title>call</title>") }
+            at(3) {
+                t = controller.activeTab
+                tabs = controller.activeSpace.tabs.count
+                t?.executeJavaScript(withUserGesture:
+                    "documentPictureInPicture.requestWindow({width: 300, height: 200}).then(" +
+                    "w => { w.document.body.innerHTML = '<h1>tiles</h1>'; document.title = 'PIP open'; }, e => document.title = 'PIP error ' + e.name)")
+            }
+            at(5) {
+                SpaceChecks.check("Meet's floating window opens", t?.title == "PIP open" && t?.hasFloatingWindow == true, "\(t?.title ?? "-") \(t?.hasFloatingWindow ?? false)")
+                SpaceChecks.check("and no tab stands in for it", controller.activeSpace.tabs.count == tabs && controller.activeTab === t)
+                t?.executeJavaScript(PictureInPicture.exitIfFloating)
+            }
+            at(7) {
+                SpaceChecks.check("closing the floating window leaves the tab", t?.hasFloatingWindow == false && t?.isClosed == false)
+                t?.executeJavaScript(withUserGesture: "documentPictureInPicture.requestWindow().then(() => document.title = 'PIP again')")
+            }
+            at(9) {
+                SpaceChecks.check("it opens again", t?.hasFloatingWindow == true, t?.title ?? "-")
+                controller.closeActiveTab()
+            }
+            at(12) {
+                SpaceChecks.check("⌘W ends the call and its floating window", t?.isClosed == true && t?.hasFloatingWindow == false)
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }

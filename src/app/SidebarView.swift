@@ -18,6 +18,8 @@ struct SidebarView: View {
                     .padding(.bottom, 6)
                 FavoritesGrid(controller: controller)
                 main
+                MeetingCard(calendar: .shared) { controller.joinMeeting($0) }
+                    .padding(.top, 6)
                 BottomBar(controller: controller)
                     .padding(.top, 6)
             }
