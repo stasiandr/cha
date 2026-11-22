@@ -197,6 +197,7 @@ BOOL IsExternalURL(NSString* url) {
 }
 
 static void (^gOpenExternal)(NSString*, BOOL);
+static void (^gTabLog)(NSString*);
 
 // Live downloads' callbacks, for cancelling from the downloads list.
 std::map<uint32_t, CefRefPtr<CefDownloadItemCallback>>& DownloadCallbacks() {
@@ -231,8 +232,14 @@ class PipClient : public CefClient, public CefLifeSpanHandler {
  public:
   explicit PipClient(ChaTab* tab) : tab_(tab) {}
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
-  void OnAfterCreated(CefRefPtr<CefBrowser>) override { tab_.hasFloatingWindow = YES; }
-  void OnBeforeClose(CefRefPtr<CefBrowser>) override { tab_.hasFloatingWindow = NO; }
+  void OnAfterCreated(CefRefPtr<CefBrowser>) override {
+    tab_.hasFloatingWindow = YES;
+    if (gTabLog) gTabLog([@"floating window opened: " stringByAppendingString:tab_.currentURL ?: @"-"]);
+  }
+  void OnBeforeClose(CefRefPtr<CefBrowser>) override {
+    tab_.hasFloatingWindow = NO;
+    if (gTabLog) gTabLog([@"floating window closed: " stringByAppendingString:tab_.currentURL ?: @"-"]);
+  }
 
  private:
   __weak ChaTab* tab_;
@@ -673,8 +680,6 @@ void ChaPreparePageWindowCorners() {
 }
 @end
 
-static void (^gTabLog)(NSString*);
-
 @implementation ChaTab {
   CefRefPtr<TabHost> _host;
   CGFloat _cornerRadius;
@@ -724,6 +729,13 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
 }
 
 - (BOOL)cefConsoleMessage:(NSString*)message {
+  // The checks' probes into a page they don't own (Meet): its answer in the log.
+  if ([message hasPrefix:@"__cha_probe__ "]) {
+    NSString* line = [message substringFromIndex:14];
+    NSLog(@"PROBE %@", line);
+    if (gTabLog) gTabLog(line);
+    return YES;
+  }
   if (![message hasPrefix:kSelectionMarker]) {
     return NO;
   }

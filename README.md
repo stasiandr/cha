@@ -87,8 +87,8 @@ for a click or a typed address; a page sending itself there asks first.
   a video with sound floats it in picture in picture; coming back brings it
   home. Sites with their own floating window (Meet's tiles and buttons) get
   theirs, as in Chrome. ⌥⌘P does the same by hand.
-- cha menu → Connect Google Calendar…: the next meeting sits at the bottom of
-  the sidebar from 30 minutes before (Join opens the call in a tab), and a
+- cha menu → Connect Google Calendar…: today's next meeting sits at the bottom
+  of the sidebar (Join opens the call in a tab), and a
   notification comes a minute before a meeting with a call link. It signs in
   with your own OAuth client: Google Cloud Console → enable the Google
   Calendar API → Credentials → OAuth client ID → Desktop app → download the

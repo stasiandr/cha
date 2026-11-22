@@ -581,6 +581,11 @@ enum TestScenarios {
                 SpaceChecks.check("hiding a meeting brings up the next", calendar.next?.id == "zoom"
                                   && calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("In 2") == true
                                   && UIFrames.frames["meetingCard"] != nil, calendar.next.map { MeetingCard.when($0, now: Date()) } ?? "-")
+                calendar.dismissed.insert("zoom")
+                SpaceChecks.check("a meeting hours away is on the card all day",
+                                  calendar.next?.id == "later" && calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("At ") == true,
+                                  calendar.next.map { MeetingCard.when($0, now: Date()) } ?? "-")
+                calendar.dismissed.remove("zoom")
                 TestScenarios.shot("calendar-soon")
                 NSApp.appearance = NSAppearance(named: .darkAqua)
             }
@@ -595,6 +600,62 @@ enum TestScenarios {
                                   && calendar.events.isEmpty && reminders.isEmpty && UIFrames.frames["meetingCard"] == nil)
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
+            }
+
+        case "meet":
+            // Live Google Meet, on screen (run by hand, with the user): they
+            // sign in and start or join a call in this instance; then the call
+            // tab is left for another and should float, and come back.
+            func probe(_ tab: ChaTab?, _ what: String) {
+                tab?.executeJavaScript("console.log('__cha_probe__ ' + JSON.stringify({\(what)}))")
+            }
+            let state = "handler: !!window.__chaEnterPiP, docpip: !!window.documentPictureInPicture?.window, "
+                + "videos: [...document.querySelectorAll('video')].map(v => [v.clientWidth, v.paused, v.muted, v.readyState].join('/')), "
+                + "pipElement: !!document.pictureInPictureElement, url: location.pathname"
+            at(1) { controller.newTab(url: "https://meet.google.com/") }
+            var call: ChaTab?
+            var callID: UUID?
+            var last = ""
+            func waitForCall(_ n: Int) {
+                let found = controller.activeSpace.tabs.first { data in
+                    guard let t = controller.liveTabs[data.id] else { return false }
+                    return t.currentURL.range(of: #"meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}"#, options: .regularExpression) != nil
+                        && t.usesCameraOrMicrophone
+                }
+                if let found, let t = controller.liveTabs[found.id] {
+                    NSLog("MEET in a call: %@", t.currentURL)
+                    call = t
+                    callID = found.id
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 6) { leave() }
+                    return
+                }
+                let t = controller.activeTab
+                let now = "\(t?.currentURL.prefix(60) ?? "-") cam=\(t?.usesCameraOrMicrophone ?? false)"
+                if now != last { NSLog("MEET waiting: %@", now); last = now }
+                if n > 900 { NSLog("MEET gave up waiting for a call"); NSApp.terminate(nil); return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { waitForCall(n + 1) }
+            }
+            at(2) { waitForCall(0) }
+            func leave() {
+                probe(call, state)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    controller.newTab(url: "https://example.com/")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    probe(call, state)
+                    SpaceChecks.check("leaving the call floats it", call?.hasFloatingWindow == true,
+                                      "floating=\(call?.hasFloatingWindow ?? false) (a video PiP shows as pipElement in the probe)")
+                    TestScenarios.screenShot("meet-left")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                    if let callID { controller.activateTab(callID) }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 16) {
+                    probe(call, state)
+                    SpaceChecks.check("coming back brings it home", call?.hasFloatingWindow == false && call?.isClosed == false)
+                    TestScenarios.screenShot("meet-back")
+                    NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                }
             }
 
         case "callpip":

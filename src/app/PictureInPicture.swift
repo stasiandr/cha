@@ -54,6 +54,12 @@ enum PictureInPicture {
         """
     }
 
+    // The same, with what it did in tabs.log when there was something to do.
+    static func loggedLeaving(call: Bool) -> String {
+        "(() => { const r = \(enterOnLeaving(call: call)); if (r !== 'none' || \(call)) "
+            + "console.log('__cha_probe__ left ' + location.host + (\(call) ? ' (in a call)' : '') + ': ' + r); })()"
+    }
+
     // Back to the tab: whatever floated comes home.
     static let exitIfFloating = """
         if (document.pictureInPictureElement) document.exitPictureInPicture();
@@ -74,7 +80,7 @@ extension BrowserController {
     func pictureInPictureForSwitch(from old: UUID?, to new: UUID?) {
         guard Self.autoPictureInPicture, old != new else { return }
         if let old, let tab = liveTabs[old] {
-            tab.executeJavaScript(withUserGesture: PictureInPicture.enterOnLeaving(call: tab.usesCameraOrMicrophone))
+            tab.executeJavaScript(withUserGesture: PictureInPicture.loggedLeaving(call: tab.usesCameraOrMicrophone))
         }
         if let new, let tab = liveTabs[new] {
             tab.executeJavaScript(withUserGesture: PictureInPicture.exitIfFloating)

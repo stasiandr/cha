@@ -1,18 +1,16 @@
 import SwiftUI
 
 // The next meeting at the bottom of the sidebar, as in Arc: its name, when
-// (in 12 min, now · until 11:30) and Join for one with a call link. Shown
-// from 30 minutes before until it ends; × hides that one meeting.
+// (in 12 min, now · until 11:30) and Join for one with a call link. Today's
+// next meeting is always there; × hides that one meeting.
 struct MeetingCard: View {
     @ObservedObject var calendar: GoogleCalendar
     let join: (URL) -> Void
     @Environment(\.colorScheme) private var scheme
     @State private var hovered = false
 
-    static let lead: TimeInterval = 30 * 60
-
     var body: some View {
-        if let event = calendar.next, event.start.timeIntervalSince(calendar.now) <= Self.lead {
+        if let event = calendar.next {
             card(event)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
         }
@@ -68,6 +66,7 @@ struct MeetingCard: View {
         if event.start <= now { return "Now · until \(time.string(from: event.end))" }
         let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
         if minutes <= 1 { return "Starting · \(time.string(from: event.start))" }
-        return "In \(minutes) min · \(time.string(from: event.start))"
+        if minutes < 60 { return "In \(minutes) min · \(time.string(from: event.start))" }
+        return "At \(time.string(from: event.start))"
     }
 }
