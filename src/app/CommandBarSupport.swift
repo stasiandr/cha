@@ -136,16 +136,43 @@ extension BrowserController {
             }
             results = Array(results.prefix(6))
 
+            // Pages visited before, but not those an open tab already shows.
+            let shown = Set(results.compactMap { result -> String? in
+                if case .tab(_, _, _, let url) = result { return url }
+                return nil
+            })
+            let visited = history.search(query).filter { !shown.contains($0.entry.url) }
+            for hit in visited.prefix(max(0, 8 - results.count)) {
+                results.append(.history(title: hit.entry.title, url: hit.entry.url))
+            }
+
             let target = normalizedURL(from: query)
-            if target.contains("google.com/search") {
+            let typedAddress = target.contains("google.com/search") ? nil : target
+            // "app" with App Store Connect visited before: Return goes there,
+            // as in Chrome and Arc, not to a search for "app". An address
+            // typed out ("example.com") still opens as typed.
+            if let typedAddress {
+                results.insert(.open(url: typedAddress), at: 0)
+            } else if let best = visited.first, best.prefix, !opensTab(startingWith: lowered, results) {
+                let hit = CommandResult.history(title: best.entry.title, url: best.entry.url)
+                results.removeAll { $0 == hit }
+                results.insert(hit, at: 0)
                 results.append(.search(query: query))
             } else {
-                results.insert(.open(url: target), at: 0)
+                results.append(.search(query: query))
             }
         }
 
         commandResults = results
         commandSelection = min(commandSelection, max(results.count - 1, 0))
+    }
+
+    // An open tab whose address starts with the query stays the first choice.
+    private func opensTab(startingWith query: String, _ results: [CommandResult]) -> Bool {
+        results.contains {
+            if case .tab(_, _, _, let url) = $0 { return History.bare(url).hasPrefix(query) }
+            return false
+        }
     }
 
     func runSelectedCommand() {
@@ -162,7 +189,7 @@ extension BrowserController {
         case .tab(let spaceID, let tabID, _, _):
             if spaceID != activeSpaceID { selectSpace(spaceID) }
             activateTab(tabID)
-        case .open(let url):
+        case .open(let url), .history(_, let url):
             openFromCommandBar(url)
         case .search(let query):
             openFromCommandBar(normalizedURL(from: query))

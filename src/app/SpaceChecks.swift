@@ -378,9 +378,67 @@ enum SpaceChecks {
             c.activeSpaceID == secret.id && c.spaces.filter(\.isSecret).count == 1)
     }
 
+    // ⌘T finds pages visited before, closed tabs or not.
+    static func checkHistory(_ c: BrowserController) {
+        c.history.clear()
+        c.newTab(url: page("Visits"))
+        guard let tab = c.activeTabID else { return check("history tab opened", false) }
+        let first: () -> String = { c.commandResults.first?.id ?? "-" }
+        for url in ["https://appstoreconnect.apple.com/apps", "https://appstoreconnect.apple.com/apps/42/testflight",
+                    "https://www.youtube.com/", "https://www.youtube.com/watch?v=1", "https://www.youtube.com/"] {
+            c.noteVisit(tabID: tab, url: url, title: "")
+        }
+        c.noteVisit(tabID: tab, url: "https://www.youtube.com/", title: "YouTube")
+        c.noteVisit(tabID: tab, url: "https://appstoreconnect.apple.com/apps/42/testflight", title: "TestFlight - App Store Connect")
+        check("a title alone is no visit", c.history.entries["https://www.youtube.com/"]?.visits == 2
+            && c.history.entries["https://www.youtube.com/"]?.title == "YouTube")
+        check("data: pages are not kept", !c.history.entries.keys.contains { $0.hasPrefix("data:") })
+        c.closeTab(tab)
+
+        c.commandQuery = "you"
+        check("\"you\" goes to YouTube's front page", first() == "history-https://www.youtube.com/", first())
+        c.commandQuery = "app"
+        check("\"app\" goes to App Store Connect", first().hasPrefix("history-https://appstoreconnect.apple.com/apps"), first())
+        check("with the search still there", c.commandResults.last == .search(query: "app"))
+        c.commandQuery = "apple"
+        check("a later part of the host finds it too", first().hasPrefix("history-https://appstoreconnect"), first())
+        c.commandQuery = "testflight"
+        check("so does the title, below the search",
+            c.commandResults.contains(.history(title: "TestFlight - App Store Connect",
+                url: "https://appstoreconnect.apple.com/apps/42/testflight")), first())
+        c.commandQuery = "youtube.com"
+        check("an address typed out opens as typed", first() == "open-https://youtube.com", first())
+        c.commandQuery = "zzqx"
+        check("nothing visited, a search first", first() == "search-zzqx", first())
+
+        c.newTab(url: page("Open"))
+        if let open = c.activeTabID {
+            c.update(tabID: open) { $0.url = "https://www.youtube.com/" }
+            c.commandQuery = "you"
+            check("an open tab beats the same page in history",
+                first() == "tab-\(open)" && !c.commandResults.contains { $0.id == "history-https://www.youtube.com/" }, first())
+            c.closeTab(open)
+        }
+
+        c.history.save(wait: true)
+        let reloaded = History()
+        check("history survives a relaunch", reloaded.entries.count == c.history.entries.count && reloaded.entries.count == 4,
+            "\(reloaded.entries.count)")
+        let mode = (try? FileManager.default.attributesOfItem(
+            atPath: Persistence.directory.appendingPathComponent("history.json").path)[.posixPermissions] as? Int) ?? 0
+        check("and is the user's alone", mode == 0o600, String(mode, radix: 8))
+        c.commandQuery = ""
+    }
+
     static func checkSecretSpaceEnd(_ c: BrowserController) {
         guard let secret = c.secretSpace else { return check("secret space still there", false) }
         let before = c.lastVisibleSpaceID
+        let kept = c.history.entries.count
+        if let tab = secret.tabs.first?.id {
+            c.noteVisit(tabID: tab, url: "https://hush.example.com/", title: "Hush")
+        }
+        check("the secret space leaves no history", c.history.entries.count == kept
+            && c.history.entries["https://hush.example.com/"] == nil)
         let archived = c.archive.count
         TestScenarios.shot("secret-space")
         if let hush = secret.tabs.first?.id { c.closeTab(hush) }
@@ -686,6 +744,7 @@ enum SpaceChecks {
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
             (0.4, { checkOrphanPages(c) }),
+            (0.6, { checkHistory(c) }),
             (0.6, { checkSecretSpace(c) }),
             (1.0, { checkSecretSpaceEnd(c) }),
             (0.8, {

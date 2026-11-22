@@ -84,6 +84,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     private var appearanceObservation: NSKeyValueObservation?
     private(set) var liveTabs: [UUID: ChaTab] = [:]
     private var tabIDsByObject: [ObjectIdentifier: UUID] = [:]
+    // Pages visited, for the command bar; the address each tab last counted.
+    let history = History()
+    private var visitedURL: [UUID: String] = [:]
     private var saveScheduled = false
 
     override init() {
@@ -457,6 +460,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard !isQuitting else { return }
         isQuitting = true
         save()
+        history.save(wait: true)
         closeCommandBar()
         for tab in liveTabs.values {
             if let native = tab.nativeWindow {
@@ -1239,6 +1243,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             if !tab.title.isEmpty { $0.title = tab.title }
             $0.url = tab.currentURL
         }
+        noteVisit(tabID: id, url: tab.currentURL, title: tab.title)
         if let icon = tab.favicon, favicons[id] !== icon {
             favicons[id] = icon
             if let host = URL(string: tab.currentURL)?.host { FaviconStore.save(icon, host: host) }
@@ -1249,6 +1254,18 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             canGoBack = tab.canGoBack
             canGoForward = tab.canGoForward
             window?.title = tab.title.isEmpty ? "cha" : tab.title
+        }
+    }
+
+    /// A tab showing a new address is a visit; the same address getting its
+    /// title is not. Nothing from the secret space is kept.
+    func noteVisit(tabID id: UUID, url: String, title: String) {
+        guard spaceContaining(id)?.isSecret != true else { return }
+        if visitedURL[id] == url {
+            history.retitle(url, title: title)
+        } else {
+            visitedURL[id] = url
+            history.visit(url, title: title)
         }
     }
 

@@ -15,6 +15,7 @@ enum CommandResult: Identifiable, Equatable {
     case addCode(uri: String)  // An otpauth:// link typed or pasted in.
     case space(id: UUID, name: String)
     case archived(id: UUID, title: String, url: String)
+    case history(title: String, url: String)  // A page visited before.
 
     var id: String {
         switch self {
@@ -24,6 +25,7 @@ enum CommandResult: Identifiable, Equatable {
         case .addCode: return "add-code"
         case .space(let id, _): return "space-\(id)"
         case .archived(let id, _, _): return "archived-\(id)"
+        case .history(_, let url): return "history-\(url)"
         }
     }
 
@@ -35,6 +37,7 @@ enum CommandResult: Identifiable, Equatable {
         case .addCode(let uri): return OTPAuth.parse(uri)?.label ?? "Verification code"
         case .space(_, let name): return name
         case .archived(_, let title, _): return title
+        case .history(let title, let url): return title.isEmpty ? History.bare(url) : title
         }
     }
 
@@ -46,6 +49,7 @@ enum CommandResult: Identifiable, Equatable {
         case .addCode: return "Save this verification code"
         case .space: return "Switch to space"
         case .archived(_, _, let url): return "Archived · " + url
+        case .history(_, let url): return History.bare(url)
         }
     }
 
@@ -57,6 +61,7 @@ enum CommandResult: Identifiable, Equatable {
         case .addCode: return "lock.rotation"
         case .space: return "square.stack"
         case .archived: return "archivebox"
+        case .history: return "clock"
         }
     }
 }

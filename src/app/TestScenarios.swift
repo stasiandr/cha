@@ -636,12 +636,22 @@ enum TestScenarios {
             at(9) {
                 SpaceChecks.check("an expired access token is refreshed", fakeLog().contains("token refresh ok=True")
                                   && fakeLog().components(separatedBy: "events valid=True").count >= 3, fakeLog())
-                SpaceChecks.check("hiding a meeting brings up the next", calendar.next?.id == "zoom"
-                                  && calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("In 2") == true
-                                  && UIFrames.frames["meetingCard"] != nil, calendar.next.map { MeetingCard.when($0, now: Date()) } ?? "-")
+                // "zoom" is 20 minutes on: just before midnight that is tomorrow.
+                if Calendar.current.isDateInToday(Date().addingTimeInterval(20 * 60)) {
+                    SpaceChecks.check("hiding a meeting brings up the next", calendar.next?.id == "zoom"
+                                      && calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("In 2") == true
+                                      && UIFrames.frames["meetingCard"] != nil, calendar.next.map { MeetingCard.when($0, now: Date()) } ?? "-")
+                } else {
+                    SpaceChecks.check("hiding the last meeting of the day empties the card", calendar.next == nil,
+                                      calendar.next?.id ?? "-")
+                }
                 calendar.dismissed.insert("zoom")
-                SpaceChecks.check("a meeting hours away is on the card all day",
-                                  calendar.next?.id == "later" && calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("At ") == true,
+                // "later" is two hours on: after 22:00 that is tomorrow, off the card.
+                let laterIsToday = Calendar.current.isDateInToday(Date().addingTimeInterval(120 * 60))
+                SpaceChecks.check(laterIsToday ? "a meeting hours away is on the card all day" : "tomorrow's meeting is not on the card",
+                                  laterIsToday
+                                    ? calendar.next?.id == "later" && calendar.next.map { MeetingCard.when($0, now: Date()) }?.hasPrefix("At ") == true
+                                    : calendar.next == nil,
                                   calendar.next.map { MeetingCard.when($0, now: Date()) } ?? "-")
                 calendar.dismissed.remove("zoom")
                 TestScenarios.shot("calendar-soon")
