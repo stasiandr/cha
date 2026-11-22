@@ -51,6 +51,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) BOOL hasFloatingWindow;
 // Off for the checks, so no floating window lands on the screen in use.
 @property(class, nonatomic) BOOL allowsFloatingWindows;
+// Pages' own popup windows (sign-in, OAuth) open right now.
+@property(class, nonatomic, readonly) NSInteger openPopupCount;
 // A call: the page has the camera or the microphone.
 @property(nonatomic, readonly) BOOL usesCameraOrMicrophone;
 @property(nonatomic, readonly) BOOL canGoBack;

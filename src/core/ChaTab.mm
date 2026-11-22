@@ -1,5 +1,6 @@
 #import "ChaTab.h"
 
+#include <algorithm>
 #include <map>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -48,14 +49,89 @@ NSString* ToNSString(const CefString& value) {
 
 // Toolbar-less Chrome style: keeps Chrome's password manager and autofill
 // while the surrounding UI stays ours.
+// A page's own popup (window.open with a size: "Sign in with Google",
+// Apple, PayPal, OAuth) is a real little window, not a cha tab: only then
+// does it keep window.opener, hand its result back to the page and close
+// itself. As a tab, tre.ge's Google sign-in never came back (2026-11-22).
+// It shows the address it is on, as Chrome's popups do.
+static int gOpenPopups = 0;
+static CefSize gNextPopupSize(500, 600);
+
+class PopupWindow : public CefWindowDelegate {
+ public:
+  PopupWindow(CefRefPtr<CefBrowserView> view, const CefRect& bounds, NSRect frame,
+              NSWindow* opener)
+      : view_(view), bounds_(bounds), frame_(frame), opener_(opener) {}
+  void OnWindowCreated(CefRefPtr<CefWindow> window) override {
+    window->SetToFillLayout();
+    window->AddChildView(view_);
+    window->Show();
+    // Placed over the window it came from. In the headless checks that is
+    // off screen, where AppKit lets only a child window stay: the popup
+    // becomes the page window's child there.
+    NSWindow* popup = CAST_CEF_WINDOW_HANDLE_TO_NSVIEW(window->GetWindowHandle()).window;
+    const char* headless = getenv("CHA_HEADLESS");
+    if (headless && *headless && opener_) {
+      [opener_ addChildWindow:popup ordered:NSWindowAbove];
+    }
+    [popup setFrame:frame_ display:NO];
+    view_->RequestFocus();
+  }
+  void OnWindowDestroyed(CefRefPtr<CefWindow>) override { view_ = nullptr; }
+  bool CanClose(CefRefPtr<CefWindow>) override {
+    CefRefPtr<CefBrowser> browser = view_ ? view_->GetBrowser() : nullptr;
+    return browser ? browser->GetHost()->TryCloseBrowser() : true;
+  }
+  CefRect GetInitialBounds(CefRefPtr<CefWindow>) override { return bounds_; }
+  cef_runtime_style_t GetWindowRuntimeStyle() override {
+    return CEF_RUNTIME_STYLE_CHROME;
+  }
+  bool CanMaximize(CefRefPtr<CefWindow>) override { return false; }
+  bool CanMinimize(CefRefPtr<CefWindow>) override { return false; }
+
+ private:
+  CefRefPtr<CefBrowserView> view_;
+  CefRect bounds_;
+  NSRect frame_;
+  __weak NSWindow* opener_;
+  IMPLEMENT_REFCOUNTING(PopupWindow);
+};
+
 class TabViewDelegate : public CefBrowserViewDelegate {
  public:
+  explicit TabViewDelegate(bool popup = false) : popup_(popup) {}
   cef_runtime_style_t GetBrowserRuntimeStyle() override {
     return CEF_RUNTIME_STYLE_CHROME;
   }
   ChromeToolbarType GetChromeToolbarType(CefRefPtr<CefBrowserView>) override {
-    return CEF_CTT_NONE;
+    return popup_ ? CEF_CTT_LOCATION : CEF_CTT_NONE;
   }
+  CefRefPtr<CefBrowserViewDelegate> GetDelegateForPopupBrowserView(
+      CefRefPtr<CefBrowserView>, const CefBrowserSettings&,
+      CefRefPtr<CefClient>, bool) override {
+    return new TabViewDelegate(true);
+  }
+  // Centred over the window it came from: in the checks that is off screen,
+  // so the popup is too.
+  bool OnPopupBrowserViewCreated(CefRefPtr<CefBrowserView> opener,
+                                 CefRefPtr<CefBrowserView> popup,
+                                 bool) override {
+    CefRefPtr<CefWindow> window = opener->GetWindow();
+    NSView* handle = window ? CAST_CEF_WINDOW_HANDLE_TO_NSVIEW(window->GetWindowHandle()) : nil;
+    NSRect over = handle.window ? handle.window.frame
+                                : (NSScreen.mainScreen ?: NSScreen.screens.firstObject).visibleFrame;
+    CGFloat width = std::max(320, std::min(gNextPopupSize.width, 1600));
+    CGFloat height = std::max(240, std::min(gNextPopupSize.height, 1200)) + 40;  // the address bar
+    NSRect frame = NSMakeRect(NSMidX(over) - width / 2,
+                              NSMaxY(over) - height - std::max<CGFloat>(0, (NSHeight(over) - height) / 3),
+                              width, height);
+    CefRect bounds(0, 0, (int)width, (int)height);
+    CefWindow::CreateTopLevelWindow(new PopupWindow(popup, bounds, frame, handle.window));
+    return true;
+  }
+
+ private:
+  bool popup_;
   IMPLEMENT_REFCOUNTING(TabViewDelegate);
 };
 
@@ -247,6 +323,52 @@ class PipClient : public CefClient, public CefLifeSpanHandler {
 };
 
 static BOOL gAllowsFloatingWindows = YES;
+
+// The client of a page's popup window. Its own, not the tab's: the popup
+// closing must not end the tab. Links in it that want a tab become the
+// opener's cha tabs; a popup it opens in turn is another little window.
+class PopupClient : public CefClient, public CefLifeSpanHandler, public CefDisplayHandler {
+ public:
+  explicit PopupClient(ChaTab* tab) : tab_(tab) {}
+  CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+  CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
+  bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int,
+                     const CefString& target_url, const CefString&,
+                     WindowOpenDisposition disposition, bool,
+                     const CefPopupFeatures& features, CefWindowInfo&,
+                     CefRefPtr<CefClient>& client, CefBrowserSettings&,
+                     CefRefPtr<CefDictionaryValue>&, bool*) override {
+    if (disposition == CEF_WOD_NEW_POPUP) {
+      gNextPopupSize = CefSize(features.widthSet ? features.width : 500,
+                               features.heightSet ? features.height : 600);
+      client = new PopupClient(tab_);
+      return false;
+    }
+    NSString* url = ToNSString(target_url);
+    ChaTab* tab = tab_;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [tab cefRequestsNewTab:url background:NO];
+    });
+    return true;
+  }
+  void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+    gOpenPopups++;
+    if (gTabLog) gTabLog([@"popup opened from " stringByAppendingString:tab_.currentURL ?: @"-"]);
+  }
+  void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+    gOpenPopups--;
+    if (gTabLog) gTabLog([@"popup closed: " stringByAppendingString:ToNSString(browser->GetMainFrame()->GetURL())]);
+  }
+  void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override {
+    CefRefPtr<CefBrowserView> view = CefBrowserView::GetForBrowser(browser);
+    CefRefPtr<CefWindow> window = view ? view->GetWindow() : nullptr;
+    if (window) window->SetTitle(title);
+  }
+
+ private:
+  __weak ChaTab* tab_;
+  IMPLEMENT_REFCOUNTING(PopupClient);
+};
 
 class TabHost : public CefClient,
                 public CefCommandHandler,
@@ -523,7 +645,7 @@ class TabHost : public CefClient,
                      const CefString&,
                      WindowOpenDisposition disposition,
                      bool user_gesture,
-                     const CefPopupFeatures&,
+                     const CefPopupFeatures& features,
                      CefWindowInfo&,
                      CefRefPtr<CefClient>& client,
                      CefBrowserSettings&,
@@ -538,6 +660,14 @@ class TabHost : public CefClient,
       if (!gAllowsFloatingWindows) return true;  // the checks: no window on screen
       client = new PipClient(tab_);
       return false;  // Chromium's own floating window
+    }
+    // window.open with a size: a popup the page talks to (sign-in, OAuth,
+    // payment). It needs window.opener, which a cha tab would not have.
+    if (disposition == CEF_WOD_NEW_POPUP) {
+      gNextPopupSize = CefSize(features.widthSet ? features.width : 500,
+                               features.heightSet ? features.height : 600);
+      client = new PopupClient(tab_);
+      return false;  // Chromium makes it; TabViewDelegate gives it a window.
     }
     NSString* url = ToNSString(target_url);
     BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
@@ -703,6 +833,10 @@ void ChaPreparePageWindowCorners() {
 
 + (void)setOpenExternal:(void (^)(NSString*, BOOL))openExternal {
   gOpenExternal = [openExternal copy];
+}
+
++ (NSInteger)openPopupCount {
+  return gOpenPopups;
 }
 
 + (BOOL)allowsFloatingWindows {

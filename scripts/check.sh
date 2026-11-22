@@ -81,14 +81,29 @@ cat > "$site/a.html" <<HTML
 <a id=other href="http://127.0.0.1:$port/b.html" style="position:fixed;left:0;top:120px;width:300px;height:100px;display:block">other</a>
 HTML
 echo "<title>B</title>b" > "$site/b.html"
+cat > "$site/popup.html" <<HTML
+<title>signin</title>
+<button id=go onclick="window.open('http://127.0.0.1:$port/auth.html', 'auth', 'width=480,height=560')">Sign in</button>
+<script>addEventListener('message', e => { document.title = 'GOT ' + e.data })</script>
+HTML
+cat > "$site/auth.html" <<HTML
+<title>Sign in</title>
+<script>setTimeout(() => { opener.postMessage('signed-in', '*'); close() }, 2500)</script>
+HTML
 python3 -m http.server "$port" --bind 127.0.0.1 --directory "$site" >/dev/null 2>&1 &
 server=$!
 sleep 0.5
 CHA_TEST_PORT=$port run_scenario peek 40; code=$?
+CHA_TEST_PORT=$port run_scenario popup 30; pcode=$?
 kill "$server" 2>/dev/null
 grep -E 'CHECK ' build/check/peek.log | sed 's/^.*cha\[[^]]*\] //'
 if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/peek.log; then
   echo "peek FAILED"; failed=$((failed + 1))
+fi
+step "a sign-in popup (window.opener, closes itself)"
+grep -E 'CHECK ' build/check/popup.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$pcode" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/popup.log; then
+  echo "popup FAILED"; failed=$((failed + 1))
 fi
 
 step "video and sound: H.264/AAC (cha's own CEF build), VP9, AV1, Opus; ⌘W ends a playing page; ⇧⌘R"

@@ -116,6 +116,42 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "popup":
+            // "Sign in with Google" as tre.ge has it: the page opens a sized
+            // popup on another site, which answers through window.opener and
+            // closes itself. As a cha tab it had no opener and never answered.
+            let port = ProcessInfo.processInfo.environment["CHA_TEST_PORT"] ?? "0"
+            var tabsBefore = 0
+            at(1) { controller.newTab(url: "http://localhost:\(port)/popup.html") }
+            at(3) {
+                tabsBefore = controller.activeSpace.tabs.count
+                controller.activeTab?.executeJavaScript(withUserGesture: "document.getElementById('go').click()")
+            }
+            at(4.5) {
+                SpaceChecks.check("the popup is a window of its own", ChaTab.openPopupCount == 1,
+                    "\(ChaTab.openPopupCount)")
+                SpaceChecks.check("not a cha tab", controller.activeSpace.tabs.count == tabsBefore,
+                    "\(tabsBefore) → \(controller.activeSpace.tabs.count)")
+                if Diagnostics.headless {
+                    let shown = NSApp.windows.filter { w in
+                        w.isVisible && NSScreen.screens.contains { $0.frame.intersects(w.frame) }
+                    }
+                    SpaceChecks.check("headless: nothing on screen", shown.isEmpty,
+                        shown.map { NSStringFromRect($0.frame) }.joined(separator: " "))
+                }
+            }
+            at(8) {
+                SpaceChecks.check("the page got the popup's answer through window.opener",
+                    controller.activeTab?.title == "GOT signed-in", controller.activeTab?.title ?? "-")
+                SpaceChecks.check("the popup closed itself", ChaTab.openPopupCount == 0,
+                    "\(ChaTab.openPopupCount)")
+                SpaceChecks.check("the tab stays", controller.activeSpace.tabs.count == tabsBefore
+                    && controller.activeTab?.currentURL.contains("popup.html") == true,
+                    controller.activeTab?.currentURL ?? "-")
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "profiles":
             // Accounts per space: each profile keeps its own site data.
             let file = Persistence.directory.appendingPathComponent("storage.html")
