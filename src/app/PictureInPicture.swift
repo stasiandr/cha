@@ -34,30 +34,39 @@ enum PictureInPicture {
     // Otherwise a playing video that can be heard floats; in a call, the
     // biggest playing video even with no sound of its own (the tiles are
     // muted, the call's sound plays apart).
-    static func enterOnLeaving(call: Bool) -> String {
+    static func enterOnLeaving(call: Bool, fallback: Bool = false) -> String {
         """
         (() => {
-          const call = \(call);
+          const call = \(call) || !!(window.__chaCall && window.__chaCall());
           if (document.pictureInPictureElement || window.documentPictureInPicture?.window) return 'already';
-          const playing = [...document.querySelectorAll('video')]
+          const playing = () => [...document.querySelectorAll('video')]
             .filter(v => !v.paused && !v.ended && v.readyState >= 2 && !v.disablePictureInPicture);
+          const pick = () => playing().find(v => !v.muted && v.volume > 0)
+            || (call ? playing().sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0] : null);
           const audible = [...document.querySelectorAll('video, audio')]
             .some(m => !m.paused && !m.ended && !m.muted && m.volume > 0);
           if (window.__chaEnterPiP && (call || audible)) {
-            try { window.__chaEnterPiP({ action: 'enterpictureinpicture' }); return 'site'; } catch (e) {}
+            try { window.__chaEnterPiP({ action: 'enterpictureinpicture' }); } catch (e) {}
+            // The site's own window didn't come: its video floats instead.
+            if (\(fallback)) setTimeout(() => {
+              if (document.pictureInPictureElement || window.documentPictureInPicture?.window) return;
+              const video = pick();
+              console.log('__cha_probe__ ' + location.host + ' opened no window of its own: ' + (video ? 'its video floats' : 'no video to float'));
+              if (video) video.requestPictureInPicture().catch(e => console.log('__cha_probe__ video refused: ' + e.name));
+            }, 1500);
+            return call ? 'site (in a call)' : 'site';
           }
-          const video = playing.find(v => !v.muted && v.volume > 0)
-            || (call ? playing.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0] : null);
-          if (video) { video.requestPictureInPicture(); return 'video'; }
-          return 'none';
+          const video = pick();
+          if (video) { video.requestPictureInPicture(); return call ? 'video (in a call)' : 'video'; }
+          return call ? 'none (in a call)' : 'none';
         })()
         """
     }
 
     // The same, with what it did in tabs.log when there was something to do.
-    static func loggedLeaving(call: Bool) -> String {
-        "(() => { const r = \(enterOnLeaving(call: call)); if (r !== 'none' || \(call)) "
-            + "console.log('__cha_probe__ left ' + location.host + (\(call) ? ' (in a call)' : '') + ': ' + r); })()"
+    static func loggedLeaving(call: Bool, fallback: Bool) -> String {
+        "(() => { const r = \(enterOnLeaving(call: call, fallback: fallback)); if (r !== 'none') "
+            + "console.log('__cha_probe__ left ' + location.host + ' (' + document.visibilityState + '): ' + r); })()"
     }
 
     // Back to the tab: whatever floated comes home.
@@ -80,7 +89,13 @@ extension BrowserController {
     func pictureInPictureForSwitch(from old: UUID?, to new: UUID?) {
         guard Self.autoPictureInPicture, old != new else { return }
         if let old, let tab = liveTabs[old] {
-            tab.executeJavaScript(withUserGesture: PictureInPicture.loggedLeaving(call: tab.usesCameraOrMicrophone))
+            // Once the tab is out of sight, as Chrome does: Meet ignores the
+            // call while its page is still visible.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self, self.activeTabID != old, !tab.isClosed else { return }
+                tab.executeJavaScript(withUserGesture: PictureInPicture.loggedLeaving(
+                    call: tab.usesCameraOrMicrophone, fallback: ChaTab.allowsFloatingWindows))
+            }
         }
         if let new, let tab = liveTabs[new] {
             tab.executeJavaScript(withUserGesture: PictureInPicture.exitIfFloating)

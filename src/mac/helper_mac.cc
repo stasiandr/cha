@@ -38,6 +38,16 @@ class HelperApp : public CefApp, public CefRenderProcessHandler {
     if (action === 'enterpictureinpicture') window.__chaEnterPiP = handler;
     return set(action, handler);
   };
+  // A call: the page holds a live camera or microphone track. (Chromium's
+  // own signal for it doesn't reach cha's tabs.)
+  const md = navigator.mediaDevices;
+  if (md && md.getUserMedia && !md.__cha) {
+    Object.defineProperty(md, '__cha', { value: true });
+    const streams = [];
+    const get = md.getUserMedia.bind(md);
+    md.getUserMedia = (c) => get(c).then(s => { streams.push(s); return s; });
+    window.__chaCall = () => streams.some(s => s.getTracks().some(t => t.readyState === 'live'));
+  }
   // What became of a floating-window request, for cha's tabs.log.
   const dpip = window.documentPictureInPicture;
   if (dpip && !dpip.__cha) {

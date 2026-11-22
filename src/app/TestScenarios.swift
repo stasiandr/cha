@@ -715,7 +715,7 @@ enum TestScenarios {
                 quiet?.executeJavaScript(withUserGesture: stub + "document.title = 'r ' + " + PictureInPicture.enterOnLeaving(call: true))
             }
             at(11.5) {
-                SpaceChecks.check("in a call the biggest playing video floats", title(quiet) == "r video", title(quiet))
+                SpaceChecks.check("in a call the biggest playing video floats", title(quiet) == "r video (in a call)", title(quiet))
                 quiet?.executeJavaScript(withUserGesture: "document.title = 'r ' + " + PictureInPicture.enterOnLeaving(call: false))
             }
             at(12.5) {
