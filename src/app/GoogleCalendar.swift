@@ -61,6 +61,7 @@ final class GoogleCalendar: NSObject, ObservableObject {
     private var listener: NWListener?
     private var timer: Timer?
     private var fetching = false
+    private var lastFetch = Date.distantPast
     private var redirectURI = ""
     // The browser's spare connections that never send anything: closed with
     // the listener.
@@ -92,6 +93,15 @@ final class GoogleCalendar: NSObject, ObservableObject {
         ) { [weak self] _ in
             self?.now = Date()
             self?.refresh()
+        }
+        // Coming back to cha (say, from the calendar where a meeting was just
+        // added) fetches anew, at most once a minute.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, Date().timeIntervalSince(self.lastFetch) > 60 else { return }
+            self.now = Date()
+            self.refresh()
         }
         refresh()
     }
@@ -221,6 +231,7 @@ final class GoogleCalendar: NSObject, ObservableObject {
     func refresh() {
         guard let token, !fetching else { return }
         fetching = true
+        lastFetch = Date()
         withAccess(token) { [weak self] access in
             guard let self else { return }
             guard let access else { self.fetching = false; return }
