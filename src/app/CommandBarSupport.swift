@@ -110,7 +110,7 @@ extension BrowserController {
 
         if !query.isEmpty {
             let lowered = query.lowercased()
-            for space in spaces where space.id != activeSpaceID
+            for space in visibleSpaces where space.id != activeSpaceID
                 && space.name.lowercased().hasPrefix(lowered)
             {
                 results.append(.space(id: space.id, name: space.name))
@@ -122,7 +122,8 @@ extension BrowserController {
                 results.append(
                     .tab(spaceID: activeSpaceID, tabID: tab.id, title: tab.displayTitle, url: tab.url))
             }
-            for space in spaces {
+            // The secret space's tabs turn up only from inside it.
+            for space in spaces where !space.isSecret || space.id == activeSpaceID {
                 for tab in space.tabs
                 where tab.displayTitle.lowercased().contains(lowered)
                     || tab.url.lowercased().contains(lowered)

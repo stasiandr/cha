@@ -6,6 +6,12 @@ import SwiftUI
 extension BrowserController {
     var activeSpaceIndex: Int { spaces.firstIndex { $0.id == activeSpaceID } ?? 0 }
 
+    // Every space but the secret one: the bottom bar, swipes, ⌃1…⌃9 and
+    // ⌥⌘←/→ go through these only.
+    var visibleSpaces: [SpaceData] { spaces.filter { !$0.isSecret } }
+    var secretSpace: SpaceData? { spaces.first(where: \.isSecret) }
+    var inSecretSpace: Bool { activeSpace.isSecret }
+
     // A space switch is a glance, not a show: the sidebar slides over in
     // 150 ms and the page only crossfades.
     static let switchDuration = 0.15
@@ -16,16 +22,19 @@ extension BrowserController {
     }
 
     // The spaces either side of the open one, for the pager.
+    // The secret space has none: it is left by a space icon, not a swipe.
     var leftSpace: SpaceData? {
         if let id = pageNeighbor.left { return space(id) }
-        let index = activeSpaceIndex
-        return index > 0 ? spaces[index - 1] : nil
+        let visible = visibleSpaces
+        guard let index = visible.firstIndex(where: { $0.id == activeSpaceID }) else { return nil }
+        return index > 0 ? visible[index - 1] : nil
     }
 
     var rightSpace: SpaceData? {
         if let id = pageNeighbor.right { return space(id) }
-        let index = activeSpaceIndex
-        return index + 1 < spaces.count ? spaces[index + 1] : nil
+        let visible = visibleSpaces
+        guard let index = visible.firstIndex(where: { $0.id == activeSpaceID }) else { return nil }
+        return index + 1 < visible.count ? visible[index + 1] : nil
     }
 
     // MARK: Switching
@@ -38,6 +47,12 @@ extension BrowserController {
         if sidebarPage != .tabs { sidebarPage = .tabs }
         let width = sidebarWidth
         guard animated, sidebarVisible, !pageAnimating else {
+            commitSpace(id)
+            return
+        }
+        // Into or out of the secret space there is no neighbour to slide
+        // from: the page just fades.
+        if spaces[target].isSecret || inSecretSpace {
             commitSpace(id)
             return
         }
@@ -80,6 +95,7 @@ extension BrowserController {
     // The switch itself, once the page has slid over.
     func commitSpace(_ id: UUID) {
         let leaving = activeTabID
+        if !inSecretSpace { lastVisibleSpaceID = activeSpaceID }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -99,14 +115,44 @@ extension BrowserController {
     }
 
     func cycleSpace(by delta: Int) {
-        guard spaces.count > 1 else { return }
-        let next = (activeSpaceIndex + delta + spaces.count) % spaces.count
-        selectSpace(spaces[next].id)
+        let visible = visibleSpaces
+        guard let current = visible.firstIndex(where: { $0.id == activeSpaceID }) else { return }
+        guard visible.count > 1 else { return }
+        let next = (current + delta + visible.count) % visible.count
+        selectSpace(visible[next].id)
     }
 
     func selectSpace(at index: Int) {
-        guard spaces.indices.contains(index) else { return }
-        selectSpace(spaces[index].id)
+        let visible = visibleSpaces
+        guard visible.indices.contains(index) else { return }
+        selectSpace(visible[index].id)
+    }
+
+    // MARK: Secret space
+
+    // Right-click on a space → Secret Space. The first time makes it, with
+    // its own profile, so its cookies, sign-ins and history stay apart.
+    func openSecretSpace() {
+        if let secret = secretSpace {
+            selectSpace(secret.id)
+            return
+        }
+        let profile = addProfile(named: "Secret")
+        var space = SpaceData(
+            name: "Secret", symbol: "lock",
+            theme: SpaceTheme(red: 0.62, green: 0.48, blue: 0.78))
+        space.isSecret = true
+        space.profileID = profile.id
+        spaces.append(space)
+        scheduleSave()
+        selectSpace(space.id)
+    }
+
+    // Back to the space that was open before, or the first one.
+    func leaveSecretSpace() {
+        guard inSecretSpace else { return }
+        let back = lastVisibleSpaceID.flatMap { id in visibleSpaces.first { $0.id == id } }
+        selectSpace((back ?? visibleSpaces[0]).id)
     }
 
     // MARK: Two-finger swipe
@@ -258,9 +304,10 @@ extension BrowserController {
 
     // Deleting a space with tabs asks first; its today tabs go to the archive.
     func deleteSpace(_ id: UUID, confirm: Bool = true) {
-        guard spaces.count > 1, let index = spaces.firstIndex(where: { $0.id == id })
-        else { return }
+        guard let index = spaces.firstIndex(where: { $0.id == id }) else { return }
         let space = spaces[index]
+        // The last visible space stays; the secret one can always go.
+        guard space.isSecret || visibleSpaces.count > 1 else { return }
         if confirm, !space.tabs.isEmpty {
             let alert = NSAlert()
             alert.messageText = "Delete “\(space.name)”?"
@@ -273,17 +320,25 @@ extension BrowserController {
         }
         for tab in space.tabs { unload(tab.id) }
         if id == activeSpaceID {
-            let next = spaces[index > 0 ? index - 1 : index + 1].id
-            commitSpace(next)
+            let visible = visibleSpaces.filter { $0.id != id }
+            let before = spaces[..<index].last(where: { !$0.isSecret })
+            let back = space.isSecret ? lastVisibleSpaceID.flatMap { self.space($0) } : nil
+            commitSpace((back ?? before ?? visible[0]).id)
         }
         spaces.removeAll { $0.id == id }
+        // The secret space's own profile goes with it from the pickers.
+        if space.isSecret, let profile = space.profileID,
+            !spaces.contains(where: { $0.profileID == profile })
+        {
+            profiles.removeAll { $0.id == profile }
+        }
         if case .editSpace(let editing, _) = sidebarPage, editing == id { sidebarPage = .tabs }
         scheduleSave()
     }
 
     // Dragging a space's icon onto another's puts it there.
     func moveSpace(_ id: UUID, before targetID: UUID) {
-        guard id != targetID, let from = spaces.firstIndex(where: { $0.id == id }),
+        guard id != targetID, space(id)?.isSecret == false, space(targetID)?.isSecret == false, let from = spaces.firstIndex(where: { $0.id == id }),
             let to = spaces.firstIndex(where: { $0.id == targetID })
         else { return }
         let space = spaces.remove(at: from)

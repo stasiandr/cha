@@ -7,8 +7,15 @@ import SwiftUI
 final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     ChaTabDelegate
 {
-    @Published var spaces: [SpaceData] { didSet { scheduleOrphanSweep() } }
+    @Published var spaces: [SpaceData] {
+        didSet {
+            Diagnostics.secretProfileID = spaces.first(where: \.isSecret)?.profileID?.uuidString
+            scheduleOrphanSweep()
+        }
+    }
     @Published var activeSpaceID: UUID
+    // The visible space open before the secret one, to go back to.
+    var lastVisibleSpaceID: UUID?
     // Favourites are shared by every space, as in Arc.
     @Published var favorites: [TabData] { didSet { scheduleOrphanSweep() } }
     @Published var archive: [ArchivedTab]
@@ -82,12 +89,16 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     override init() {
         let state = Persistence.load()
         spaces = state.spaces
+        Diagnostics.secretProfileID = state.spaces.first(where: \.isSecret)?.profileID?.uuidString
         favorites = state.favorites ?? []
         archive = state.archive ?? []
         profiles = state.profiles ?? []
         let saved = state.activeSpaceID
+        // The secret space never opens by itself: a launch starts in a
+        // visible one.
+        let visible = state.spaces.filter { !$0.isSecret }
         activeSpaceID =
-            state.spaces.contains { $0.id == saved } ? saved! : state.spaces[0].id
+            visible.contains { $0.id == saved } ? saved! : visible[0].id
         sidebarWidth = CGFloat(state.sidebarWidth ?? 225)
         super.init()
         sidebarFraction = CGFloat(state.sidebarFraction ?? Double(sidebarWidth) / 1280)
@@ -735,7 +746,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard !isQuitting else { return }
         let known = Set(spaces.flatMap { $0.tabs.map(\.id) } + favorites.map(\.id))
         for (id, tab) in liveTabs where !known.contains(id) {
-            Diagnostics.tabLog("a page with no tab, closing: \(tab.currentURL)")
+            Diagnostics.tabLog(
+                "a page with no tab, closing: "
+                    + (tab.profileID != nil && tab.profileID == Diagnostics.secretProfileID
+                        ? "(secret space)" : tab.currentURL))
             unload(id)
         }
     }
@@ -1132,7 +1146,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // MARK: - Archive
 
     func addToArchive(_ tab: TabData, spaceID: UUID?) {
-        guard !tab.url.isEmpty, tab.url != "about:blank" else { return }
+        guard !tab.url.isEmpty, tab.url != "about:blank",
+            space(spaceID)?.isSecret != true
+        else { return }
         archive.insert(
             ArchivedTab(url: tab.url, title: tab.displayTitle, spaceID: spaceID), at: 0)
         if archive.count > 500 { archive.removeLast(archive.count - 500) }
@@ -1245,7 +1261,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func tab(_ tab: ChaTab, requestsNewTabWithURL url: String) {
-        NSLog("TAB opened in front: %@", url)
+        NSLog("TAB opened in front: %@", inSecretSpace ? "(secret space)" : url)
         newTab(url: url)
     }
 
@@ -1257,7 +1273,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         let firstToday = space.tabs.firstIndex { !$0.isPinned } ?? space.tabs.count
         space.tabs.insert(data, at: firstToday)
         replace(space)
-        NSLog("TAB opened in the background: %@", url)
+        NSLog("TAB opened in the background: %@", inSecretSpace ? "(secret space)" : url)
     }
 
     func tabDidClose(_ tab: ChaTab) {

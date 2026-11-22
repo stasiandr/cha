@@ -319,6 +319,83 @@ enum SpaceChecks {
         Persistence.save(saved)
     }
 
+    // The secret space: reached from a space's menu, hidden from the bottom
+    // bar, swipes, ⌃1…⌃9, the command bar, the archive and the logs, never
+    // opened at launch.
+    static func checkSecretSpace(_ c: BrowserController) {
+        let before = c.activeSpaceID
+        let visibleCount = c.visibleSpaces.count
+        let archived = c.archive.count
+        c.openSecretSpace()
+        guard let secret = c.secretSpace else { return check("secret space made", false) }
+        check("secret space opens", c.activeSpaceID == secret.id && c.inSecretSpace)
+        check("it has a profile of its own", secret.profileID != nil
+            && c.spaces.filter { $0.id != secret.id }.allSatisfy { $0.profileID != secret.profileID })
+        check("it is not among the visible spaces",
+            c.visibleSpaces.count == visibleCount && !c.visibleSpaces.contains { $0.id == secret.id })
+        check("no swipe neighbours in it", c.leftSpace == nil && c.rightSpace == nil)
+        c.newTab(url: page("Hush"))
+        let hush = c.activeTabID
+        _ = archived
+        c.commandQuery = "hush"
+        c.refreshCommandResults()
+        let found = c.commandResults.contains {
+            if case .tab(_, let id, _, _) = $0 { return id == hush }
+            return false
+        }
+        check("its tabs are found from inside it", found)
+
+        c.leaveSecretSpace()
+        check("leaving goes back where it came from", c.activeSpaceID == before)
+        c.refreshCommandResults()
+        let leaked = c.commandResults.contains {
+            switch $0 {
+            case .tab(let space, _, _, _), .space(let space, _): return space == secret.id
+            default: return false
+            }
+        }
+        check("the command bar keeps it hidden outside", !leaked)
+        c.commandQuery = "sec"
+        c.refreshCommandResults()
+        check("nor finds it by name", !c.commandResults.contains {
+            if case .space(let id, _) = $0 { return id == secret.id }
+            return false
+        })
+        c.commandQuery = ""
+        for index in 0..<visibleCount {
+            c.selectSpace(at: index)
+            c.commitSpace(c.pageNeighbor.right ?? c.pageNeighbor.left ?? c.activeSpaceID)
+            check("⌃\(index + 1) never lands in it", !c.inSecretSpace)
+        }
+        c.selectSpace(before, animated: false)
+        c.cycleSpace(by: -1)
+        c.commitSpace(c.pageNeighbor.right ?? c.pageNeighbor.left ?? c.activeSpaceID)
+        check("nor ⌥⌘←", !c.inSecretSpace)
+        c.selectSpace(before, animated: false)
+
+        c.openSecretSpace()
+        check("the second time it is the same space",
+            c.activeSpaceID == secret.id && c.spaces.filter(\.isSecret).count == 1)
+    }
+
+    static func checkSecretSpaceEnd(_ c: BrowserController) {
+        guard let secret = c.secretSpace else { return check("secret space still there", false) }
+        let before = c.lastVisibleSpaceID
+        let archived = c.archive.count
+        TestScenarios.shot("secret-space")
+        if let hush = secret.tabs.first?.id { c.closeTab(hush) }
+        check("its closed tabs skip the archive", c.archive.count == archived)
+
+        c.save()
+        let relaunched = BrowserController()
+        check("a launch never opens it", relaunched.activeSpaceID != secret.id
+            && relaunched.secretSpace?.id == secret.id)
+
+        c.deleteSpace(secret.id, confirm: false)
+        check("it can be deleted, back to a visible space",
+            c.secretSpace == nil && !c.inSecretSpace && c.activeSpaceID == before)
+    }
+
     static func run(_ c: BrowserController) {
         var personal = UUID()
         var work = UUID()
@@ -609,6 +686,8 @@ enum SpaceChecks {
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
             (0.4, { checkOrphanPages(c) }),
+            (0.6, { checkSecretSpace(c) }),
+            (1.0, { checkSecretSpaceEnd(c) }),
             (0.8, {
                 // Many spaces: the inactive ones shrink to dots.
                 for _ in 0..<8 {

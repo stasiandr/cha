@@ -67,6 +67,9 @@ struct SpaceData: Codable, Identifiable, Equatable {
     var folders: [FolderData] = []
     var activeTabID: UUID?
     var profileID: UUID?
+    // The secret space: no icon in the bottom bar, not in swipes, ⌃1…⌃9,
+    // the command bar or the archive; reached from a space icon's menu.
+    var isSecret = false
 
     var pinnedTabs: [TabData] { tabs.filter(\.isPinned) }
     var unpinnedTabs: [TabData] { tabs.filter { !$0.isPinned } }
@@ -91,7 +94,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, symbol, theme, tint, tabs, folders, activeTabID, profileID
+        case id, name, symbol, theme, tint, tabs, folders, activeTabID, profileID, isSecret
     }
 
     // Older state files kept the colour as one of six names under "tint".
@@ -110,6 +113,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
         folders = try c.decodeIfPresent([FolderData].self, forKey: .folders) ?? []
         activeTabID = try c.decodeIfPresent(UUID.self, forKey: .activeTabID)
         profileID = try c.decodeIfPresent(UUID.self, forKey: .profileID)
+        isSecret = try c.decodeIfPresent(Bool.self, forKey: .isSecret) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -122,6 +126,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
         try c.encode(folders, forKey: .folders)
         try c.encodeIfPresent(activeTabID, forKey: .activeTabID)
         try c.encodeIfPresent(profileID, forKey: .profileID)
+        if isSecret { try c.encode(isSecret, forKey: .isSecret) }
     }
 }
 
@@ -232,7 +237,7 @@ enum Persistence {
     static func load() -> BrowserState {
         guard let data = try? Data(contentsOf: fileURL),
               let state = try? JSONDecoder().decode(BrowserState.self, from: data),
-              !state.spaces.isEmpty
+              state.spaces.contains(where: { !$0.isSecret })
         else { return .initial }
         return state
     }

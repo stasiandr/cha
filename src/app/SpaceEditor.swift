@@ -84,7 +84,9 @@ struct SpaceEditorView: View {
                         Button("Cancel") { controller.finishEditing(cancelled: true) }
                     } else {
                         Button("Delete Space…") { controller.deleteSpace(spaceID) }
-                            .disabled(controller.spaces.count < 2)
+                            .disabled(
+                                controller.space(spaceID)?.isSecret != true
+                                    && controller.visibleSpaces.count < 2)
                     }
                     Spacer()
                     Button(isNew ? "Create Space" : "Done") { controller.finishEditing() }

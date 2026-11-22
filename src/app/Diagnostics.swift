@@ -77,6 +77,9 @@ extension Diagnostics {
         fileLog("links.log", line)
     }
 
+    /// The secret space's profile: its pages are logged without addresses.
+    static var secretProfileID: String?
+
     /// Sign-in codes and tokens in URLs stay out of the logs.
     static func redacted(_ line: String) -> String {
         line.replacingOccurrences(
@@ -109,7 +112,9 @@ extension ChaTab {
     // Closes the page and makes sure it went: one still there 3 s later
     // (it would go on playing, unseen) is logged and closed again.
     func end(_ why: String) {
-        let url = currentURL
+        // The secret space's addresses never reach the logs.
+        let secret = profileID != nil && profileID == Diagnostics.secretProfileID
+        let url = secret ? "(secret space)" : currentURL
         Diagnostics.tabLog("close (\(why)) \(url)")
         close()
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in

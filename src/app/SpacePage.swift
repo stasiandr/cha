@@ -124,8 +124,10 @@ struct SpacePageView: View {
         Button("Edit Space…") { controller.editSpace(space.id) }
         Button("New Folder") { _ = controller.addFolder() }
         Divider()
+        SecretSpaceButton(controller: controller)
+        Divider()
         Button("Delete Space…") { controller.deleteSpace(space.id) }
-            .disabled(controller.spaces.count < 2)
+            .disabled(!space.isSecret && controller.visibleSpaces.count < 2)
     }
 
     @ViewBuilder
@@ -324,7 +326,7 @@ struct TabMenu: View {
         if tab.hasLeftPinnedURL {
             Button("Back to Pinned Address") { controller.resetToPinnedURL(tab.id) }
         }
-        let others = controller.spaces.filter { $0.id != space.id }
+        let others = controller.visibleSpaces.filter { $0.id != space.id }
         if !others.isEmpty {
             Menu("Move to Space") {
                 ForEach(others) { other in
@@ -448,11 +450,19 @@ struct BottomBar: View {
             DownloadsButton(controller: controller)
             Spacer(minLength: 0)
             GeometryReader { geometry in
-                let compact = CGFloat(controller.spaces.count) * 28 > geometry.size.width
+                let visible = controller.visibleSpaces
+                let secret = controller.inSecretSpace ? controller.secretSpace : nil
+                let count = visible.count + (secret == nil ? 0 : 1)
+                let compact = CGFloat(count) * 28 > geometry.size.width
                 HStack(spacing: compact ? 1 : 2) {
-                    ForEach(Array(controller.spaces.enumerated()), id: \.element.id) {
+                    ForEach(Array(visible.enumerated()), id: \.element.id) {
                         index, space in
                         spaceButton(space, index: index, compact: compact)
+                    }
+                    // Only while it is open does the secret space show an
+                    // icon, after the others.
+                    if let secret {
+                        spaceButton(secret, index: 9, compact: compact)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -505,8 +515,23 @@ struct BottomBar: View {
         .contextMenu {
             Button("Edit Space…") { controller.editSpace(space.id) }
             Divider()
+            SecretSpaceButton(controller: controller)
+            Divider()
             Button("Delete Space…") { controller.deleteSpace(space.id) }
-                .disabled(controller.spaces.count < 2)
+                .disabled(!space.isSecret && controller.visibleSpaces.count < 2)
+        }
+    }
+}
+
+// "Secret Space" in a space's menu, or the way back out of it.
+struct SecretSpaceButton: View {
+    @ObservedObject var controller: BrowserController
+
+    var body: some View {
+        if controller.inSecretSpace {
+            Button("Leave Secret Space") { controller.leaveSecretSpace() }
+        } else {
+            Button("Secret Space") { controller.openSecretSpace() }
         }
     }
 }
