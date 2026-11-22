@@ -37,12 +37,29 @@ def at(minutes):
     return {"dateTime": t.isoformat(timespec="seconds").replace("+00:00", "Z")}
 
 
+def guests():
+    people = [
+        {"email": "lead@example.com", "displayName": "Ada Lead", "organizer": True, "responseStatus": "accepted"},
+        {"email": "me@example.com", "self": True, "responseStatus": "accepted"},
+        {"email": "room@resource.example.com", "displayName": "Room 3", "resource": True, "responseStatus": "accepted"},
+        {"email": "no@example.com", "displayName": "Nora No", "responseStatus": "declined"},
+        {"email": "maybe@example.com", "displayName": "Max Maybe", "responseStatus": "tentative", "optional": True},
+    ]
+    for i in range(14):
+        people.append({"email": f"guest{i}@example.com", "displayName": f"Guest {i:02d}",
+                       "responseStatus": "accepted" if i % 2 else "needsAction"})
+    return people
+
+
 def events():
     base = f"http://127.0.0.1:{port}"
     return [
         {"id": "over", "summary": "Earlier", "start": at(-90), "end": at(-60)},
-        {"id": "now", "summary": "Standup", "start": at(-5), "end": at(10),
-         "hangoutLink": f"{base}/meet/abc-defg-hij", "htmlLink": f"{base}/event/now"},
+        {"id": "now", "summary": "Standup: the weekly sync of the whole game team, with demos", "start": at(-5), "end": at(10),
+         "hangoutLink": f"{base}/meet/abc-defg-hij", "htmlLink": f"{base}/event/now",
+         "location": f"{base}/meet/abc-defg-hij",
+         "description": "Agenda:<br>1. Demos &amp; builds<br><b>2.</b> Plans for next week<p>Notes in the doc.</p>",
+         "attendees": guests()},
         {"id": "declined", "summary": "Declined", "start": at(1), "end": at(30),
          "hangoutLink": f"{base}/meet/no",
          "attendees": [{"email": "me@example.com", "self": True, "responseStatus": "declined"}]},

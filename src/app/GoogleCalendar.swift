@@ -24,6 +24,19 @@ struct CalendarEvent: Equatable, Identifiable {
     let end: Date
     let joinURL: URL?
     let link: URL?
+    var location: String? = nil
+    var notes: String? = nil
+    var guests: [Guest] = []
+
+    struct Guest: Equatable, Hashable {
+        enum Answer: String { case yes = "accepted", no = "declined", maybe = "tentative", none = "needsAction" }
+        let name: String
+        let email: String
+        let answer: Answer
+        let organizer: Bool
+        let isMe: Bool
+        let optional: Bool
+    }
 }
 
 final class GoogleCalendar: NSObject, ObservableObject {
@@ -34,6 +47,8 @@ final class GoogleCalendar: NSObject, ObservableObject {
     @Published private(set) var problem: String?
     @Published private(set) var now = Date()
     @Published var dismissed: Set<String> = []
+    /// The checks open a meeting's details without a pointer.
+    @Published var detailsFor: String?
 
     /// Opens a URL in cha (the consent page, Join); set by the controller.
     var openURL: (String) -> Void = { _ in }
@@ -283,10 +298,35 @@ final class GoogleCalendar: NSObject, ObservableObject {
         if attendees.contains(where: { ($0["self"] as? Bool) == true && ($0["responseStatus"] as? String) == "declined" }) {
             return nil
         }
+        let join = joinURL(item)
+        let place = (item["location"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let guests = attendees.compactMap { a -> CalendarEvent.Guest? in
+            guard let email = a["email"] as? String, (a["resource"] as? Bool) != true else { return nil }  // rooms aren't guests
+            return CalendarEvent.Guest(
+                name: (a["displayName"] as? String) ?? email, email: email,
+                answer: CalendarEvent.Guest.Answer(rawValue: a["responseStatus"] as? String ?? "") ?? .none,
+                organizer: (a["organizer"] as? Bool) == true, isMe: (a["self"] as? Bool) == true,
+                optional: (a["optional"] as? Bool) == true)
+        }
         return CalendarEvent(
             id: id, title: (item["summary"] as? String) ?? "(No title)",
-            start: startDate, end: endDate, joinURL: joinURL(item),
-            link: (item["htmlLink"] as? String).flatMap(URL.init(string:)))
+            start: startDate, end: endDate, joinURL: join,
+            link: (item["htmlLink"] as? String).flatMap(URL.init(string:)),
+            // A place that is only the call link says nothing new.
+            location: place.flatMap { $0.isEmpty || $0 == join?.absoluteString ? nil : $0 },
+            notes: (item["description"] as? String).map(plainText).flatMap { $0.isEmpty ? nil : $0 },
+            guests: guests)
+    }
+
+    /// Google's descriptions are HTML: line breaks kept, tags and entities gone.
+    static func plainText(_ html: String) -> String {
+        var text = html.replacingOccurrences(of: #"<br\s*/?>|</?p(\s[^>]*)?>|</?div(\s[^>]*)?>|</li>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        for (entity, char) in ["&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'"] {
+            text = text.replacingOccurrences(of: entity, with: char)
+        }
+        text = text.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func joinURL(_ item: [String: Any]) -> URL? {

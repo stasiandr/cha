@@ -582,6 +582,28 @@ enum TestScenarios {
                 tabsBefore = controller.activeSpace.tabs.count
                 calendar.connect()
             }
+            at(4) { calendar.detailsFor = "now" }
+            at(4.6) {
+                let e = calendar.events.first
+                SpaceChecks.check("guests: rooms left out, answers read",
+                                  e?.guests.count == 18 && e.map { MeetingDetails.summary($0.guests) } == "18 guests · 9 yes · 1 no · 1 maybe · 7 awaiting"
+                                  && e?.guests.contains { $0.isMe && $0.answer == .yes } == true
+                                  && e?.guests.first?.organizer == true,
+                                  e.map { MeetingDetails.summary($0.guests) } ?? "-")
+                SpaceChecks.check("the description is plain text, the call link isn't a place",
+                                  e?.notes == "Agenda:\n1. Demos & builds\n2. Plans for next week\nNotes in the doc." && e?.location == nil,
+                                  "\(e?.notes ?? "-") | \(e?.location ?? "-")")
+                SpaceChecks.check("hovering the card shows the meeting's details", UIFrames.frames["meetingDetails"] != nil)
+                if let pop = NSApp.windows.first(where: { String(describing: type(of: $0)).contains("Popover") && $0.isVisible }) {
+                    // The popover's material isn't drawn into the picture: light
+                    // text would vanish on it, so the shot is in light mode.
+                    pop.appearance = NSAppearance(named: .aqua)
+                    pop.contentView?.layoutSubtreeIfNeeded()
+                    pop.displayIfNeeded()
+                    TestScenarios.shotWindow(pop, "calendar-details")
+                }
+                calendar.detailsFor = nil
+            }
             at(5) {
                 let token = Persistence.directory.appendingPathComponent("google-token.json")
                 let mode = (try? FileManager.default.attributesOfItem(atPath: token.path)[.posixPermissions] as? Int) ?? 0
