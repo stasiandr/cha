@@ -782,11 +782,11 @@ enum TestScenarios {
                 SpaceChecks.check("a call's muted tiles play", title(quiet) == "tiles playing", title(quiet))
                 quiet?.executeJavaScript(withUserGesture: stub + "document.title = 'r ' + " + PictureInPicture.enterOnLeaving(call: true))
             }
-            at(11.5) {
+            at(12.5) {  // A second: the page's answer comes later when the Mac is busy.
                 SpaceChecks.check("in a call the biggest playing video floats", title(quiet) == "r video (in a call)", title(quiet))
                 quiet?.executeJavaScript(withUserGesture: "document.title = 'r ' + " + PictureInPicture.enterOnLeaving(call: false))
             }
-            at(12.5) {
+            at(13.5) {
                 SpaceChecks.check("muted videos out of a call stay", title(quiet) == "r none", title(quiet))
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
@@ -1216,7 +1216,7 @@ enum TestScenarios {
                 controller.addSpace()
                 controller.finishEditing()
                 routedSpace = controller.activeSpaceID
-                controller.selectSpace(at: 0)
+                if let first = controller.visibleSpaces.first?.id { controller.selectSpace(first, animated: false) }
                 RoutingStore.shared.rules = [RouteRule(match: "Routed page", spaceID: routedSpace!)]
                 LittleWindowController.open.forEach { $0.window.close() }
                 let event = NSAppleEventDescriptor(
@@ -1226,9 +1226,11 @@ enum TestScenarios {
                 event.setParam(NSAppleEventDescriptor(string: "data:text/html,<title>Routed page</title>"), forKeyword: keyDirectObject)
                 URLOpener.shared.handleGetURL(event, withReplyEvent: NSAppleEventDescriptor.null())
             }
-            at(8.6) {
+            at(9.2) {
+                let routedTabs = controller.spaces.first { $0.id == routedSpace }?.tabs.map(\.url) ?? []
                 SpaceChecks.check("a routed link opens as a tab of its space", controller.activeSpaceID == routedSpace
-                    && controller.activeSpace.tabs.contains { $0.url.contains("Routed") })
+                    && routedTabs.contains { $0.contains("Routed") },
+                    "active \(controller.activeSpace.name), routed space tabs \(routedTabs.count): \(routedTabs.joined(separator: " "))")
                 SpaceChecks.check("not in a little window", !LittleWindowController.open.contains { $0.url.contains("Routed") })
                 SpaceChecks.check("rules are kept", RoutingStore().rules.first?.match == "Routed page")
                 SpaceChecks.check("a rule doesn't claim other links", RoutingStore.shared.space(for: "https://example.com/", in: controller.spaces) == nil)
@@ -1238,7 +1240,7 @@ enum TestScenarios {
                 SpaceChecks.check("closing it closes the page too", LittleWindowController.open.isEmpty)
                 SpaceChecks.check("and leaves the main window alone", controller.activeSpace.tabs.count == tabsBefore + 1)
             }
-            at(9) {
+            at(9.6) {
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }

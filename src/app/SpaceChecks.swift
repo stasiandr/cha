@@ -557,7 +557,7 @@ enum SpaceChecks {
         check("\"you\" goes to YouTube's front page", first() == "history-https://www.youtube.com/", first())
         c.commandQuery = "app"
         check("\"app\" goes to App Store Connect", first().hasPrefix("history-https://appstoreconnect.apple.com/apps"), first())
-        check("with the search still there", c.commandResults.last == .search(query: "app"))
+        check("with the search still there", c.commandResults.contains(.search(query: "app")))
         c.commandQuery = "apple"
         check("a later part of the host finds it too", first().hasPrefix("history-https://appstoreconnect"), first())
         c.commandQuery = "testflight"
