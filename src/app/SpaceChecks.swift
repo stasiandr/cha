@@ -414,6 +414,39 @@ enum SpaceChecks {
         ])
     }
 
+    // The hidden sidebar peeks out when the pointer reaches the left edge.
+    static func checkSidebarPeek(_ c: BrowserController) {
+        guard let window = c.window else { return check("window for the peek", false) }
+        let real = BrowserController.mouseLocation
+        var mouse = NSPoint(x: window.frame.midX, y: window.frame.midY)
+        BrowserController.mouseLocation = { mouse }
+        c.toggleSidebar(animated: false)
+        check("the sidebar hides", !c.sidebarVisible && c.sidebarPeekTimer != nil)
+        c.sidebarPeekTick()
+        check("no peek with the pointer over the page", !c.sidebarPeekShown)
+        mouse = NSPoint(x: window.frame.minX + 2, y: window.frame.midY)
+        c.sidebarPeekTick()
+        check("the left edge brings it out over the page", c.sidebarPeekShown)
+        sequence([
+            (0.4, {
+                let frame = c.sidebarPeek?.frame ?? .zero
+                check("at the window's left, the sidebar's width, above the page",
+                    abs(frame.minX - window.frame.minX - 6) < 2 && abs(frame.width - c.sidebarWidth) < 1
+                        && c.sidebarPeek?.parent === window, NSStringFromRect(frame))
+                TestScenarios.shot("sidebar-peek")
+                mouse = NSPoint(x: frame.midX, y: frame.midY)
+                c.sidebarPeekTick()
+                check("it stays while the pointer is on it", c.sidebarPeekShown)
+                mouse = NSPoint(x: window.frame.midX + 200, y: window.frame.midY)
+                c.sidebarPeekTick()
+                check("and goes once the pointer leaves", !c.sidebarPeekShown)
+                c.toggleSidebar(animated: false)
+                check("⌘S brings the sidebar back and stops watching", c.sidebarVisible && c.sidebarPeekTimer == nil)
+                BrowserController.mouseLocation = real
+            }),
+        ])
+    }
+
     // ⌃Tab goes back through the tabs in the order they were used.
     static func checkRecentTabs(_ c: BrowserController) {
         var ids: [UUID] = []
@@ -922,7 +955,8 @@ enum SpaceChecks {
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
             (0.4, { checkOrphanPages(c) }),
-            (0.6, { checkRecentTabs(c) }),
+            (0.6, { checkSidebarPeek(c) }),
+            (0.8, { checkRecentTabs(c) }),
             (2.2, { checkCommands(c) }),
             (6.0, { checkBackToTab(c) }),
             (2.8, { checkHistory(c) }),

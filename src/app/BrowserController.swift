@@ -29,6 +29,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var boostSite: String?
     var boostPanel: NSPanel?
     var routingPanel: NSPanel?
+    // The hidden sidebar peeking out at the left edge (SidebarPeek.swift).
+    var sidebarPeek: NSPanel?
+    var sidebarPeekTimer: Timer?
     @Published var zapping = false
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true
@@ -1095,6 +1098,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // at the start.
     func toggleSidebar(animated: Bool = true) {
         let showing = !sidebarVisible
+        if showing { stopSidebarPeekWatch() } else { startSidebarPeekWatch() }
         guard animated, let sidebar = sidebarView, let leading = sidebarLeadingConstraint, window != nil
         else {
             stopSidebarSlide()
