@@ -824,6 +824,68 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "sound":
+            // A tab playing sound: its speaker, mute, and the mini player once
+            // it is left. (The checks run with Chromium's sound off.)
+            let song = "data:text/html,<title>Player</title><audio loop></audio><script>"
+                + "const rate = 8000, n = rate; const b = new ArrayBuffer(44 + n); const d = new DataView(b);"
+                + "const w = (o, s) => [...s].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));"
+                + "w(0, 'RIFF'); d.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true);"
+                + "d.setUint16(22, 1, true); d.setUint32(24, rate, true); d.setUint32(28, rate, true); d.setUint16(32, 1, true);"
+                + "d.setUint16(34, 8, true); w(36, 'data'); d.setUint32(40, n, true);"
+                + "for (let i = 0; i < n; i++) d.setUint8(44 + i, 128 + 60 * Math.sin(i / 4));"
+                + "document.querySelector('audio').src = URL.createObjectURL(new Blob([b], {type: 'audio/wav'}));"
+                + "navigator.mediaSession.metadata = new MediaMetadata({title: 'Test Song', artist: 'Test Band'});"
+                + "navigator.mediaSession.setActionHandler('nexttrack', () => document.title = 'next track');"
+                + "</script>"
+            var player: UUID?
+            func state() -> MediaState? { player.flatMap { controller.media[$0] } }
+            at(1) {
+                controller.newTab(url: song)
+                player = controller.activeTabID
+            }
+            at(3) { controller.activeTab?.executeJavaScript(withUserGesture: "document.querySelector('audio').play()") }
+            at(4.5) {
+                SpaceChecks.check("a tab playing sound is known", state()?.playing == true, "\(String(describing: state()))")
+                SpaceChecks.check("its row shows a speaker", player.map { UIFrames.frames["speaker:\($0)"] != nil } == true)
+                SpaceChecks.check("with what the page says is playing", state()?.title == "Test Song" && state()?.artist == "Test Band")
+                SpaceChecks.check("no mini player for the tab in front", controller.miniPlayerTab == nil)
+                controller.newTab(url: "data:text/html,<title>Elsewhere</title>")
+            }
+            at(5.5) {
+                SpaceChecks.check("leaving it brings up the mini player", controller.miniPlayerTab == player && UIFrames.frames["miniPlayer"] != nil)
+                shot("mini-player")
+                if let player { controller.mediaCommand(player, "toggle") }
+            }
+            at(6.5) {
+                SpaceChecks.check("its button pauses", state()?.playing == false && state()?.paused == true, "\(String(describing: state()))")
+                SpaceChecks.check("and the player stays, to play again", controller.miniPlayerTab == player)
+                if let player { controller.mediaCommand(player, "toggle") }
+            }
+            at(7.5) {
+                SpaceChecks.check("and plays again", state()?.playing == true)
+                if let player {
+                    controller.mediaCommand(player, "nexttrack")
+                    controller.toggleMute(player)
+                }
+            }
+            at(8.5) {
+                let title = player.flatMap { controller.liveTabs[$0]?.title } ?? "-"
+                SpaceChecks.check("forward runs the page's next-track", title == "next track", title)
+                SpaceChecks.check("mute mutes the tab", state()?.muted == true && player.flatMap { controller.liveTabs[$0]?.audioMuted } == true)
+                if let player { controller.showTab(player) }
+            }
+            at(9) {
+                SpaceChecks.check("going back to it puts the player away", controller.miniPlayerTab == nil && controller.activeTabID == player)
+                if let player { controller.toggleMute(player) }
+                controller.navigate(to: "data:text/html,<title>Silent</title>")
+            }
+            at(10.5) {
+                SpaceChecks.check("a new page there plays nothing", state() == nil && controller.miniPlayerTab == nil, "\(String(describing: state()))")
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "external":
             // Links to other apps go to macOS instead of nowhere: a click and a
             // typed address open the app; a page sending itself there asks

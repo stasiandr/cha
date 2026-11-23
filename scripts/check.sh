@@ -144,6 +144,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ca
   echo "calendar FAILED"; failed=$((failed + 1))
 fi
 
+step "sound: a tab's speaker and mute, the mini player"
+run_scenario sound 30; code=$?
+grep -E 'CHECK ' build/check/sound.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/sound.log; then
+  echo "sound FAILED"; failed=$((failed + 1))
+fi
+
 step "links to other apps (slack:, mailto:) go to macOS"
 run_scenario external 30; code=$?
 grep -E 'CHECK ' build/check/external.log | sed 's/^.*cha\[[^]]*\] //'

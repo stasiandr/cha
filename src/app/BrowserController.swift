@@ -22,6 +22,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var profiles: [ProfileData]
     @Published var favicons: [UUID: NSImage] = [:]
     @Published var loadingTabs: Set<UUID> = []
+    // What tabs play (Media.swift): the sidebar's speakers and mini player.
+    @Published var media: [UUID: MediaState] = [:]
+    @Published var lastPlayedTab: UUID?
+    @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true
     @Published var isFullscreen = false
     @Published var addressText = ""
@@ -728,6 +732,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // and favourites in Arc.
     func unload(_ id: UUID) {
         guard let tab = liveTabs.removeValue(forKey: id) else { return }
+        forgetMedia(id)
         tabIDsByObject.removeValue(forKey: ObjectIdentifier(tab))
         if let native = tab.nativeWindow, native.parent != nil {
             window.removeChildWindow(native)
@@ -1250,6 +1255,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             $0.url = tab.currentURL
         }
         noteVisit(tabID: id, url: tab.currentURL, title: tab.title)
+        noteMedia(tabID: id, tab: tab)
         if let icon = tab.favicon, favicons[id] !== icon {
             favicons[id] = icon
             if let host = URL(string: tab.currentURL)?.host { FaviconStore.save(icon, host: host) }
@@ -1370,6 +1376,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
         liveTabs.removeValue(forKey: id)
         tabIDsByObject.removeValue(forKey: ObjectIdentifier(tab))
+        forgetMedia(id)
         closeTab(id)
     }
 

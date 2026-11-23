@@ -238,6 +238,7 @@ struct TabRow: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 0)
+            TabSpeaker(controller: controller, tabID: tab.id)
             if tab.hasLeftPinnedURL, hovered || isActive {
                 Button {
                     controller.resetToPinnedURL(tab.id)

@@ -30,6 +30,11 @@
 @property(nonatomic) BOOL canGoForward;
 @property(nonatomic) BOOL usesCameraOrMicrophone;
 @property(nonatomic) BOOL hasFloatingWindow;
+@property(nonatomic) BOOL isPlayingMedia;
+@property(nonatomic) BOOL hasPausedMedia;
+@property(nonatomic, copy) NSString* mediaTitle;
+@property(nonatomic, copy) NSString* mediaArtist;
+- (void)cefNewDocument;
 - (void)cefWindowCreated;
 - (void)cefWindowActivated;
 - (void)cefWindowDestroyed:(BOOL)browserAlive;
@@ -624,6 +629,13 @@ class TabHost : public CefClient,
   }
 
   // CefLoadHandler
+  // A new document in the main frame: what played in the old one stopped.
+  void OnLoadStart(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                   TransitionType) override {
+    if (frame->IsMain()) {
+      [tab_ cefNewDocument];
+    }
+  }
   void OnLoadingStateChange(CefRefPtr<CefBrowser>,
                             bool isLoading,
                             bool canGoBack,
@@ -831,6 +843,7 @@ void ChaPreparePageWindowCorners() {
   CGFloat _cornerRadius;
   BOOL _wantsClose;
   void (^_selectionHandler)(NSString*);
+  NSMutableDictionary<NSString*, NSDictionary*>* _mediaFrames;
 }
 
 + (void (^)(NSString*))log {
@@ -878,8 +891,85 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
        "console.log('%@' + JSON.stringify(t)); })()", kSelectionMarker]];
 }
 
+- (void)cefNewDocument {
+  [_mediaFrames removeAllObjects];
+  [self updateMedia];
+}
+
+// One frame's sound: {"t": its token, "p": playing, "paused", "title", "artist"}.
+- (void)cefMediaMessage:(NSString*)json {
+  NSDictionary* state = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding]
+                                                        options:0 error:nil];
+  NSString* token = [state isKindOfClass:NSDictionary.class] ? state[@"t"] : nil;
+  if (![token isKindOfClass:NSString.class]) {
+    return;
+  }
+  if (!_mediaFrames) {
+    _mediaFrames = [NSMutableDictionary dictionary];
+  }
+  _mediaFrames[token] = state;
+  [self updateMedia];
+}
+
+- (void)updateMedia {
+  BOOL playing = NO, paused = NO;
+  NSString* title = @"";
+  NSString* artist = @"";
+  for (NSDictionary* state in _mediaFrames.allValues) {
+    BOOL p = [state[@"p"] boolValue];
+    playing = playing || p;
+    paused = paused || [state[@"paused"] boolValue];
+    NSString* t = state[@"title"];
+    if ([t isKindOfClass:NSString.class] && t.length && (p || !title.length)) {
+      title = t;
+      NSString* a = state[@"artist"];
+      artist = [a isKindOfClass:NSString.class] ? a : @"";
+    }
+  }
+  if (playing == _isPlayingMedia && paused == _hasPausedMedia && [title isEqualToString:_mediaTitle ?: @""] &&
+      [artist isEqualToString:_mediaArtist ?: @""]) {
+    return;
+  }
+  self.isPlayingMedia = playing;
+  self.hasPausedMedia = paused;
+  self.mediaTitle = title;
+  self.mediaArtist = artist;
+  [self cefChanged];
+}
+
+- (void)sendMediaCommand:(NSString*)command {
+  auto browser = _host ? _host->browser() : nullptr;
+  if (!browser) {
+    return;
+  }
+  std::string script = "window.__chaMedia && window.__chaMedia('" + std::string(command.UTF8String) + "')";
+  std::vector<CefString> ids;
+  browser->GetFrameIdentifiers(ids);
+  for (const auto& id : ids) {
+    if (auto frame = browser->GetFrameByIdentifier(id)) {
+      frame->ExecuteJavaScript(script, "", 0);
+    }
+  }
+}
+
+- (BOOL)audioMuted {
+  auto browser = _host ? _host->browser() : nullptr;
+  return browser && browser->GetHost()->IsAudioMuted();
+}
+
+- (void)setAudioMuted:(BOOL)muted {
+  if (auto browser = _host ? _host->browser() : nullptr) {
+    browser->GetHost()->SetAudioMuted(muted);
+    [self cefChanged];
+  }
+}
+
 - (BOOL)cefConsoleMessage:(NSString*)message {
   // The checks' probes into a page they don't own (Meet): its answer in the log.
+  if ([message hasPrefix:@"__cha_media__ "]) {
+    [self cefMediaMessage:[message substringFromIndex:14]];
+    return YES;
+  }
   if ([message hasPrefix:@"__cha_probe__ "]) {
     NSString* line = [message substringFromIndex:14];
     NSLog(@"PROBE %@", line);

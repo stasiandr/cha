@@ -61,6 +61,16 @@ NS_ASSUME_NONNULL_BEGIN
 @property(class, nonatomic, readonly) NSInteger openPopupCount;
 // A call: the page has the camera or the microphone.
 @property(nonatomic, readonly) BOOL usesCameraOrMicrophone;
+// Sound: the page plays some (a <video>/<audio> not muted), or has some
+// paused part-way; what the page says is playing (Media Session); cha's mute.
+@property(nonatomic, readonly) BOOL isPlayingMedia;
+@property(nonatomic, readonly) BOOL hasPausedMedia;
+@property(nonatomic, readonly, copy) NSString* mediaTitle;
+@property(nonatomic, readonly, copy) NSString* mediaArtist;
+@property(nonatomic) BOOL audioMuted;
+// The mini player's buttons: "toggle" (play/pause), "nexttrack",
+// "previoustrack", in every frame of the page.
+- (void)sendMediaCommand:(NSString*)command;
 @property(nonatomic, readonly) BOOL canGoBack;
 @property(nonatomic, readonly) BOOL canGoForward;
 

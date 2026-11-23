@@ -30,6 +30,61 @@ class HelperApp : public CefApp, public CefRenderProcessHandler {
     CefRefPtr<CefV8Exception> exception;
     context->Eval(R"JS(
 (() => {
+  // What plays sound in this frame, for the sidebar's speaker and the mini
+  // player: one console line to cha whenever it changes. Elements played
+  // from script (new Audio()) are followed as well as the page's own.
+  if (window.__chaMedia) return;
+  const token = Math.random().toString(36).slice(2);
+  const els = new Set();
+  const handlers = {};
+  let last = '';
+  const sounding = m => !m.paused && !m.ended && !m.muted && m.volume > 0;
+  const report = () => {
+    const all = [...els, ...document.querySelectorAll('video, audio')];
+    const playing = all.some(sounding);
+    const meta = navigator.mediaSession && navigator.mediaSession.metadata;
+    const line = JSON.stringify({ t: token, p: playing ? 1 : 0, paused: !playing && all.some(m => m.paused && m.currentTime > 0 && !m.ended) ? 1 : 0,
+      title: (meta && meta.title) || '', artist: (meta && meta.artist) || '' });
+    if (line !== last) { last = line; console.log('__cha_media__ ' + line); }
+  };
+  let pending = false;
+  const schedule = () => { if (!pending) { pending = true; setTimeout(() => { pending = false; report(); }, 50); } };
+  const follow = m => {
+    if (els.has(m)) return;
+    els.add(m);
+    ['play', 'playing', 'pause', 'ended', 'volumechange', 'emptied'].forEach(e => m.addEventListener(e, schedule));
+  };
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function () { follow(this); schedule(); return play.apply(this, arguments); };
+  ['playing', 'pause'].forEach(e => document.addEventListener(e, ev => { if (ev.target instanceof HTMLMediaElement) follow(ev.target); schedule(); }, true));
+  const ms = navigator.mediaSession;
+  if (ms) {
+    const set = ms.setActionHandler.bind(ms);
+    ms.setActionHandler = (action, handler) => { handlers[action] = handler; return set(action, handler); };
+  }
+  // The mini player's buttons.
+  window.__chaMedia = (command) => {
+    const all = [...els, ...document.querySelectorAll('video, audio')];
+    if (command === 'toggle') {
+      const playing = all.filter(sounding);
+      if (playing.length) {
+        if (handlers.pause) handlers.pause({ action: 'pause' }); else playing.forEach(m => m.pause());
+      } else if (handlers.play) {
+        handlers.play({ action: 'play' });
+      } else {
+        const paused = all.find(m => m.paused && m.currentTime > 0 && !m.ended);
+        if (paused) paused.play();
+      }
+    } else if (handlers[command]) {
+      handlers[command]({ action: command });
+    } else if (command === 'nexttrack' || command === 'previoustrack') {
+      const m = all.find(sounding) || all[0];
+      if (m) m.currentTime = command === 'nexttrack' ? m.currentTime + 10 : Math.max(0, m.currentTime - 10);
+    }
+    schedule();
+  };
+})();
+(() => {
   const ms = navigator.mediaSession;
   if (!ms || ms.__cha) return;
   Object.defineProperty(ms, '__cha', { value: true });
