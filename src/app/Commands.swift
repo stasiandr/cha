@@ -51,6 +51,8 @@ struct ChaCommand: Equatable {
         .init(id: "routing", title: "Route Links to Spaces…", symbol: "arrow.triangle.branch", keys: "", words: ["air traffic control", "rules", "links from apps"]),
         .init(id: "new-note", title: "New Note", symbol: "note.text", keys: "⌃⌘N", words: ["easel", "write", "notes"]),
         .init(id: "capture", title: "Capture", symbol: "camera.viewfinder", keys: "⇧⌘2", words: ["screenshot", "picture"]),
+        .init(id: "extensions", title: "Extensions", symbol: "puzzlepiece.extension", keys: "", words: ["add-ons", "plugins", "web store"]),
+        .init(id: "install-extension", title: "Install This Extension", symbol: "plus.app", keys: "", words: ["add to cha", "add to chrome", "web store"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
     ]
 
@@ -99,6 +101,8 @@ extension BrowserController {
         case "new-folder": _ = addFolder()
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
+        case "extensions": openExtensions()
+        case "install-extension": installExtensionFromPage()
         case "capture": startCapture()
         case "new-note": newNote()
         case "routing": openRoutingRules()

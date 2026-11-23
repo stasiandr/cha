@@ -107,6 +107,29 @@ static BOOL ChaQuiet() {
 
 namespace {
 
+// The profile's Extensions/ folders that hold a manifest, comma-separated.
+NSString* InstalledExtensionPaths() {
+  NSString* root;
+  if (const char* custom = getenv("CHA_PROFILE")) {
+    root = [NSString stringWithUTF8String:custom];
+  } else {
+    NSURL* support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
+                                                          inDomains:NSUserDomainMask].firstObject;
+    root = [support.path stringByAppendingPathComponent:@"cha"];
+  }
+  NSString* dir = [root stringByAppendingPathComponent:@"Extensions"];
+  NSMutableArray<NSString*>* paths = [NSMutableArray array];
+  for (NSString* name in [[NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil]
+                             sortedArrayUsingSelector:@selector(compare:)]) {
+    NSString* path = [dir stringByAppendingPathComponent:name];
+    if ([NSFileManager.defaultManager fileExistsAtPath:[path stringByAppendingPathComponent:@"manifest.json"]] &&
+        ![name hasPrefix:@"."]) {
+      [paths addObject:path];
+    }
+  }
+  return paths.count ? [paths componentsJoinedByString:@","] : nil;
+}
+
 class AppHandler : public CefApp, public CefBrowserProcessHandler {
  public:
   explicit AppHandler(ChaEngine* engine) : engine_(engine) {}
@@ -127,6 +150,12 @@ class AppHandler : public CefApp, public CefBrowserProcessHandler {
     // once the app is signed.
     if (!getenv("CHA_REAL_KEYCHAIN")) {
       command_line->AppendSwitch("use-mock-keychain");
+    }
+    // Chrome extensions: every folder in the profile's Extensions/ with a
+    // manifest (cha's Extensions window installs them there). Chromium
+    // loads them as unpacked extensions; only at launch.
+    if (NSString* list = InstalledExtensionPaths()) {
+      command_line->AppendSwitchWithValue("load-extension", list.UTF8String);
     }
     // Test runs happen while someone works at this Mac: no sound, and pages
     // keep painting although their windows sit off screen.

@@ -1039,6 +1039,40 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "extensions":
+            // Chrome extensions: installed from a CRX (a local stand-in for the
+            // Web Store), loaded after a restart (the step runs this twice).
+            let port = ProcessInfo.processInfo.environment["CHA_TEST_PORT"] ?? "0"
+            let id = "abcdefghijklmnopabcdefghijklmnop"
+            ExtensionStore.crxURL = { URL(string: "http://127.0.0.1:\(port)/\($0).crx") }
+            let second = !ExtensionStore.shared.installed.isEmpty
+            if !second {
+                at(1) {
+                    SpaceChecks.check("a Web Store link gives the ID",
+                        ExtensionStore.extensionID(from: "https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh") == "ddkjiahejlhfcafbddmgiahcphecmpfh")
+                    SpaceChecks.check("other text gives none", ExtensionStore.extensionID(from: "hello") == nil)
+                    controller.openExtensions()
+                    ExtensionStore.shared.install("https://chromewebstore.google.com/detail/probe/\(id)") { ok in
+                        let store = ExtensionStore.shared
+                        SpaceChecks.check("installing unpacks it into the profile", ok && store.installed.first?.id == id
+                            && store.installed.first?.name == "cha probe" && store.needsRestart, store.message)
+                        NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                        NSApp.terminate(nil)
+                    }
+                }
+            } else {
+                at(1) { controller.newTab(url: "http://127.0.0.1:\(port)/") }
+                at(4) { controller.activeTab?.executeJavaScript("document.title = 'EXT ' + (document.documentElement.dataset.ext || 'none')") }
+                at(5) {
+                    SpaceChecks.check("after a restart the extension runs on pages", controller.activeTab?.title == "EXT yes",
+                                      controller.activeTab?.title ?? "-")
+                    if let ext = ExtensionStore.shared.installed.first { ExtensionStore.shared.remove(ext) }
+                    SpaceChecks.check("Remove takes it out", ExtensionStore.shared.installed.isEmpty && ExtensionStore.shared.needsRestart)
+                    NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                    NSApp.terminate(nil)
+                }
+            }
+
         case "sound":
             // A tab playing sound: its speaker, mute, and the mini player once
             // it is left. (The checks run with Chromium's sound off.)

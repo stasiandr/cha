@@ -172,6 +172,37 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ca
   echo "capture FAILED"; failed=$((failed + 1))
 fi
 
+step "Chrome extensions: installed from a CRX, running after a restart"
+site="build/check/ext-site"; rm -rf "$site"; mkdir -p "$site/src"
+echo '<title>ext</title><p>page</p>' > "$site/index.html"
+printf '%s' '{"manifest_version": 3, "name": "cha probe", "version": "1.0", "content_scripts": [{"matches": ["<all_urls>"], "js": ["c.js"], "run_at": "document_start"}]}' > "$site/src/manifest.json"
+echo "document.documentElement.dataset.ext = 'yes';" > "$site/src/c.js"
+python3 - "$site" <<'PY'
+import io, struct, sys, zipfile, os
+site = sys.argv[1]
+buf = io.BytesIO()
+with zipfile.ZipFile(buf, "w") as z:
+    for name in ("manifest.json", "c.js"):
+        z.write(os.path.join(site, "src", name), name)
+header = b""
+open(os.path.join(site, "abcdefghijklmnopabcdefghijklmnop.crx"), "wb").write(b"Cr24" + struct.pack("<II", 3, len(header)) + header + buf.getvalue())
+PY
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 -m http.server "$port" --bind 127.0.0.1 --directory "$site" >/dev/null 2>&1 &
+server=$!
+sleep 0.5
+CHA_TEST_PORT=$port run_scenario extensions 30; code=$?
+profile="build/check/profile-extensions"; cp build/check/extensions.log build/check/extensions-1.log
+# The same profile again, as after a restart (run_scenario would start afresh).
+CHA_TEST_PORT=$port CHA_HEADLESS=1 CHA_TEST=extensions CHA_PROFILE="$PWD/$profile" CHA_DOWNLOADS="$PWD/$profile/Downloads" \
+  timeout 30 build/cha.app/Contents/MacOS/cha >build/check/extensions-2.log 2>&1; code2=$?
+kill "$server" 2>/dev/null
+grep -hE 'CHECK ' build/check/extensions-1.log build/check/extensions-2.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || [ "$code2" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/extensions-1.log \
+  || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/extensions-2.log; then
+  echo "extensions FAILED"; failed=$((failed + 1))
+fi
+
 step "Split View: two tabs side by side"
 run_scenario split 30; code=$?
 grep -E 'CHECK ' build/check/split.log | sed 's/^.*cha\[[^]]*\] //'

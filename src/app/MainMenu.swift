@@ -24,6 +24,10 @@ enum MainMenu {
             action: #selector(MenuTarget.toggleCalendar), keyEquivalent: "")
         calendar.target = target
         app.addItem(calendar)
+        let extensions = NSMenuItem(
+            title: "Extensions…", action: #selector(MenuTarget.extensions), keyEquivalent: "")
+        extensions.target = target
+        app.addItem(extensions)
         app.addItem(.separator())
         app.addItem(
             withTitle: "Hide cha", action: #selector(NSApplication.hide(_:)),
@@ -283,6 +287,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func routing() { controller?.openRoutingRules() }
     @objc func newNote() { controller?.newNote() }
     @objc func capture() { controller?.startCapture() }
+    @objc func extensions() { controller?.openExtensions() }
     @objc func closeSplitView() { controller?.closeSplit() }
     @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }
     @objc func zoomOut() { controller?.chromeCommand(ChaCommand.Chrome.zoomOut) }
