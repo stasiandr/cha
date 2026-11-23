@@ -1273,24 +1273,50 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     /// Chromium made a tab's window active on the page's behalf (the
-    /// floating call window's "Back to tab"): that tab comes forward, in its
-    /// space, with cha in front. Checked a moment later, so an activation
-    /// cha itself caused while switching away is not taken for a request.
+    /// floating call window's "Back to tab", a popup focusing its opener):
+    /// a tab in the background comes forward. The active tab's window turns
+    /// active whenever the page is clicked, which needs nothing. Checked a
+    /// moment later, so an activation cha caused while switching away is not
+    /// taken for a request.
     func tabWantsToBeShown(_ tab: ChaTab) {
         DispatchQueue.main.async { [weak self, weak tab] in
-            guard let self, let tab, tab.nativeWindow?.isKeyWindow == true else { return }
-            self.bringForward(tab)
+            guard let self, let tab, tab.nativeWindow?.isKeyWindow == true,
+                let id = self.tabIDsByObject[ObjectIdentifier(tab)], id != self.activeSpace.activeTabID
+            else { return }
+            self.bringForward(tab, why: "its window was made active")
         }
     }
 
-    func bringForward(_ tab: ChaTab) {
+    /// "Back to tab" when cha is not the active app: macOS may refuse
+    /// Chromium's activation, so the window never turns active, but Chromium
+    /// has put the hidden tab's window on screen. A tab whose floating window
+    /// closed that way comes forward, with cha in front; one closed with its
+    /// own close button stays hidden, and cha stays where it was.
+    func tabFloatingWindowClosed(_ tab: ChaTab) {
+        guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
+        let active = id == activeSpace.activeTabID
+        let shown = tab.nativeWindow?.isVisible == true && tab.nativeWindow?.parent == nil
+        Diagnostics.tabLog("floating window closed: tab \(active ? "in front" : "behind")\(shown ? ", put on screen by Chromium" : ""), cha \(NSApp.isActive ? "active" : "in the background")")
+        if !active && shown { bringForward(tab, why: "Back to tab") }
+    }
+
+    func bringForward(_ tab: ChaTab, why: String) {
         guard !isQuitting, let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
-        Diagnostics.tabLog("tab asked to come forward: \(id == activeSpace.activeTabID ? "already in front" : "switched to it")")
+        Diagnostics.tabLog("tab comes forward (\(why))\(NSApp.isActive ? "" : ", cha to the front")")
         showTab(id)
-        if !Diagnostics.quiet {
-            window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            tab.focus()
+        guard !Diagnostics.quiet, !NSApp.isActive else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        tab.focus()
+        // macOS may turn down an app activating itself; LaunchServices
+        // opening cha's own bundle is not turned down (as with the launcher).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            guard !NSApp.isActive else { return }
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+                if let error { Diagnostics.tabLog("could not bring cha to the front: \(error.localizedDescription)") }
+            }
         }
     }
 

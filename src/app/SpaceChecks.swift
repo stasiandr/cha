@@ -389,11 +389,20 @@ enum SpaceChecks {
         let other = c.activeSpaceID
         c.newTab(url: page("Elsewhere"))
         sequence([
-            // Headless, the window cannot become key (cha is not the active
-            // app), so what follows the activation is called directly.
+            // The floating window closed with its own close button: the call
+            // tab stays behind.
             (1.5, {
                 guard let tab = c.liveTabs[call] else { return check("call tab is live", false) }
-                c.bringForward(tab)
+                c.tabFloatingWindowClosed(tab)
+                check("closing the floating window leaves the call behind",
+                    c.activeSpaceID == other && c.activeSpace.activeTabID != call)
+            }),
+            // "Back to tab": Chromium puts the hidden call tab's window on
+            // screen, whether or not macOS lets cha become active.
+            (0.3, {
+                guard let tab = c.liveTabs[call], let native = tab.nativeWindow else { return check("call tab has a window", false) }
+                native.orderFront(nil)
+                c.tabFloatingWindowClosed(tab)
             }),
             (0.6, {
                 check("Back to tab switches to the call, in its space",

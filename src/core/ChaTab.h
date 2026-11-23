@@ -25,6 +25,9 @@ NS_ASSUME_NONNULL_BEGIN
 // The tab's window was made active by the page's side, not by cha: Chromium
 // asks for its tab to come forward (a floating window's "Back to tab").
 - (void)tabWantsToBeShown:(ChaTab*)tab NS_SWIFT_NAME(tabWantsToBeShown(_:));
+// The page's floating window (document picture-in-picture) closed: by its
+// close button, by "Back to tab", or by the page.
+- (void)tabFloatingWindowClosed:(ChaTab*)tab NS_SWIFT_NAME(tabFloatingWindowClosed(_:));
 // Find in page: |count| matches, the |active|-th selected (1-based).
 - (void)tab:(ChaTab*)tab didFindCount:(int)count active:(int)active final:(BOOL)final;
 @end

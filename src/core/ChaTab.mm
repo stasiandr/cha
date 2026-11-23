@@ -316,6 +316,11 @@ class PipClient : public CefClient, public CefLifeSpanHandler {
   void OnBeforeClose(CefRefPtr<CefBrowser>) override {
     tab_.hasFloatingWindow = NO;
     if (gTabLog) gTabLog([@"floating window closed: " stringByAppendingString:tab_.currentURL ?: @"-"]);
+    ChaTab* tab = tab_;
+    id<ChaTabDelegate> delegate = tab.delegate;
+    if ([delegate respondsToSelector:@selector(tabFloatingWindowClosed:)]) {
+      [delegate tabFloatingWindowClosed:tab];
+    }
   }
 
  private:
