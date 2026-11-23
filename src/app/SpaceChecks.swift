@@ -390,9 +390,10 @@ enum SpaceChecks {
         }
         c.noteVisit(tabID: tab, url: "https://www.youtube.com/", title: "YouTube")
         c.noteVisit(tabID: tab, url: "https://appstoreconnect.apple.com/apps/42/testflight", title: "TestFlight - App Store Connect")
-        check("a title alone is no visit", c.history.entries["https://www.youtube.com/"]?.visits == 2
-            && c.history.entries["https://www.youtube.com/"]?.title == "YouTube")
-        check("data: pages are not kept", !c.history.entries.keys.contains { $0.hasPrefix("data:") })
+        let home = c.activeSpaceID
+        let youtube = c.history.entry("https://www.youtube.com/", in: home)
+        check("a title alone is no visit", youtube?.visits == 2 && youtube?.title == "YouTube")
+        check("data: pages are not kept", !c.history.entries.values.contains { $0.url.hasPrefix("data:") })
         c.closeTab(tab)
 
         c.commandQuery = "you"
@@ -420,6 +421,25 @@ enum SpaceChecks {
             c.closeTab(open)
         }
 
+        // Each space has its own: work's Miro is not offered in a personal
+        // space, where another account is signed in.
+        c.addSpace()
+        c.sidebarPage = .tabs
+        let other = c.activeSpaceID
+        c.newTab(url: page("Elsewhere"))
+        if let tab = c.activeTabID { c.noteVisit(tabID: tab, url: "https://miro.com/app/board/1", title: "Board") }
+        c.commandQuery = "you"
+        check("another space has none of this one's history",
+            !c.commandResults.contains { $0.id.hasPrefix("history-") }, c.commandResults.map(\.id).joined(separator: ", "))
+        c.commandQuery = "miro"
+        check("only its own", first() == "history-https://miro.com/app/board/1", first())
+        c.selectSpace(home, animated: false)
+        c.commandQuery = "miro"
+        check("and the first space none of the other's", !c.commandResults.contains { $0.id.hasPrefix("history-") }, first())
+        c.deleteSpace(other, confirm: false)
+        check("a deleted space takes its history along", !c.history.entries.values.contains { $0.space == other })
+        c.selectSpace(home, animated: false)
+
         c.history.save(wait: true)
         let reloaded = History()
         check("history survives a relaunch", reloaded.entries.count == c.history.entries.count && reloaded.entries.count == 4,
@@ -438,7 +458,7 @@ enum SpaceChecks {
             c.noteVisit(tabID: tab, url: "https://hush.example.com/", title: "Hush")
         }
         check("the secret space leaves no history", c.history.entries.count == kept
-            && c.history.entries["https://hush.example.com/"] == nil)
+            && !c.history.entries.values.contains { $0.url == "https://hush.example.com/" })
         let archived = c.archive.count
         TestScenarios.shot("secret-space")
         if let hush = secret.tabs.first?.id { c.closeTab(hush) }

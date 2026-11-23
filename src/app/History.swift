@@ -1,15 +1,17 @@
 import Foundation
 
 // Pages the user has been to, for the command bar: typing "app" should find
-// App Store Connect even when no tab has it open any more. Kept on disk
-// (history.json in the profile), at most `limit` pages; the secret space's
-// pages never get here.
+// App Store Connect even when no tab has it open any more. Each space has a
+// history of its own (a work space's Miro never turns up in a personal one,
+// where another account is signed in). Kept on disk (history.json in the
+// profile), at most `limit` pages; the secret space's pages never get here.
 final class History {
     struct Entry: Codable, Equatable {
         var url: String
         var title: String
         var visits: Int
         var last: Date
+        var space: UUID?  // Entries from before spaces had their own are dropped.
     }
 
     static let limit = 5000
@@ -23,7 +25,7 @@ final class History {
         if let data = try? Data(contentsOf: file),
             let list = try? JSONDecoder().decode([Entry].self, from: data)
         {
-            for entry in list { entries[entry.url] = entry }
+            for entry in list where entry.space != nil { entries[History.key(entry.url, entry.space)] = entry }
         }
     }
 
@@ -33,29 +35,44 @@ final class History {
         return lowered.hasPrefix("https://") || lowered.hasPrefix("http://")
     }
 
-    /// A page was opened (or a page went to another address).
-    func visit(_ url: String, title: String) {
+    static func key(_ url: String, _ space: UUID?) -> String {
+        (space?.uuidString ?? "-") + " " + url
+    }
+
+    func entry(_ url: String, in space: UUID) -> Entry? { entries[History.key(url, space)] }
+
+    /// A page was opened (or a page went to another address) in the space.
+    func visit(_ url: String, title: String, in space: UUID) {
         guard History.keeps(url) else { return }
-        var entry = entries[url] ?? Entry(url: url, title: "", visits: 0, last: Date())
+        let key = History.key(url, space)
+        var entry = entries[key] ?? Entry(url: url, title: "", visits: 0, last: Date(), space: space)
         entry.visits += 1
         entry.last = Date()
         if !title.isEmpty { entry.title = title }
-        entries[url] = entry
+        entries[key] = entry
         trim()
         scheduleSave()
     }
 
     /// The page's title came after its address.
-    func retitle(_ url: String, title: String) {
-        guard !title.isEmpty, var entry = entries[url], entry.title != title else { return }
+    func retitle(_ url: String, title: String, in space: UUID) {
+        let key = History.key(url, space)
+        guard !title.isEmpty, var entry = entries[key], entry.title != title else { return }
         entry.title = title
-        entries[url] = entry
+        entries[key] = entry
         scheduleSave()
     }
 
     func clear() {
         entries = [:]
         scheduleSave()
+    }
+
+    /// A deleted space takes its history with it.
+    func forget(space: UUID) {
+        let before = entries.count
+        entries = entries.filter { $0.value.space != space }
+        if entries.count != before { scheduleSave() }
     }
 
     /// The address without its scheme and "www.": what the user types.
@@ -71,11 +88,11 @@ final class History {
     /// Pages matching the query, best first. A page whose address starts
     /// with what was typed beats one that only has it somewhere; among those,
     /// often and recently visited pages come first.
-    func search(_ query: String, now: Date = Date()) -> [(entry: Entry, prefix: Bool)] {
+    func search(_ query: String, in space: UUID, now: Date = Date()) -> [(entry: Entry, prefix: Bool)] {
         let words = query.lowercased().split(separator: " ").map(String.init)
         guard let first = words.first else { return [] }
         var hits: [(entry: Entry, prefix: Bool, score: Double)] = []
-        for entry in entries.values {
+        for entry in entries.values where entry.space == space {
             let bare = History.bare(entry.url)
             let title = entry.title.lowercased()
             guard words.allSatisfy({ bare.contains($0) || title.contains($0) }) else { continue }
@@ -100,7 +117,7 @@ final class History {
     private func trim() {
         guard entries.count > History.limit else { return }
         let old = entries.values.sorted { $0.last < $1.last }.prefix(entries.count - History.limit)
-        for entry in old { entries[entry.url] = nil }
+        for entry in old { entries[History.key(entry.url, entry.space)] = nil }
     }
 
     // Written a few seconds after the last change, off the main thread, so

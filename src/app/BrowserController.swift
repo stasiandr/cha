@@ -1257,15 +1257,18 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         }
     }
 
-    /// A tab showing a new address is a visit; the same address getting its
-    /// title is not. Nothing from the secret space is kept.
+    /// A tab showing a new address is a visit, in the tab's space (a
+    /// favourite's, shared by all, in the space it was opened from); the same
+    /// address getting its title is not. Nothing from the secret space is kept.
     func noteVisit(tabID id: UUID, url: String, title: String) {
-        guard spaceContaining(id)?.isSecret != true else { return }
+        let space = spaceContaining(id)
+        guard space?.isSecret != true else { return }
+        let spaceID = space?.id ?? activeSpaceID
         if visitedURL[id] == url {
-            history.retitle(url, title: title)
+            history.retitle(url, title: title, in: spaceID)
         } else {
             visitedURL[id] = url
-            history.visit(url, title: title)
+            history.visit(url, title: title, in: spaceID)
         }
     }
 

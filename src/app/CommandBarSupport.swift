@@ -136,12 +136,13 @@ extension BrowserController {
             }
             results = Array(results.prefix(6))
 
-            // Pages visited before, but not those an open tab already shows.
+            // Pages visited before in this space (another space has other
+            // accounts signed in), but not those an open tab already shows.
             let shown = Set(results.compactMap { result -> String? in
                 if case .tab(_, _, _, let url) = result { return url }
                 return nil
             })
-            let visited = history.search(query).filter { !shown.contains($0.entry.url) }
+            let visited = history.search(query, in: activeSpaceID).filter { !shown.contains($0.entry.url) }
             for hit in visited.prefix(max(0, 8 - results.count)) {
                 results.append(.history(title: hit.entry.title, url: hit.entry.url))
             }

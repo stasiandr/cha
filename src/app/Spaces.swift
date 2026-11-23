@@ -326,6 +326,7 @@ extension BrowserController {
             commitSpace((back ?? before ?? visible[0]).id)
         }
         spaces.removeAll { $0.id == id }
+        history.forget(space: id)
         // The secret space's own profile goes with it from the pickers.
         if space.isSecret, let profile = space.profileID,
             !spaces.contains(where: { $0.profileID == profile })
