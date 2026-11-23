@@ -979,8 +979,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func copyLink(_ id: UUID? = nil) {
         guard let id = id ?? activeSpace.activeTabID, let tab = tabData(id) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(liveTabs[id]?.currentURL ?? tab.url, forType: .string)
+        BrowserController.clipboard.clearContents()
+        BrowserController.clipboard.setString(liveTabs[id]?.currentURL ?? tab.url, forType: .string)
     }
 
     func navigate(to input: String) {

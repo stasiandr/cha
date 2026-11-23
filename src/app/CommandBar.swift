@@ -16,6 +16,7 @@ enum CommandResult: Identifiable, Equatable {
     case space(id: UUID, name: String)
     case archived(id: UUID, title: String, url: String)
     case history(title: String, url: String)  // A page visited before.
+    case command(ChaCommand)  // Something cha does: Copy URL, New Space.
 
     var id: String {
         switch self {
@@ -26,6 +27,7 @@ enum CommandResult: Identifiable, Equatable {
         case .space(let id, _): return "space-\(id)"
         case .archived(let id, _, _): return "archived-\(id)"
         case .history(_, let url): return "history-\(url)"
+        case .command(let command): return "command-\(command.id)"
         }
     }
 
@@ -38,6 +40,7 @@ enum CommandResult: Identifiable, Equatable {
         case .space(_, let name): return name
         case .archived(_, let title, _): return title
         case .history(let title, let url): return title.isEmpty ? History.bare(url) : title
+        case .command(let command): return command.title
         }
     }
 
@@ -50,6 +53,7 @@ enum CommandResult: Identifiable, Equatable {
         case .space: return "Switch to space"
         case .archived(_, _, let url): return "Archived · " + url
         case .history(_, let url): return History.bare(url)
+        case .command(let command): return command.keys.isEmpty ? "Command" : "Command · " + command.keys
         }
     }
 
@@ -62,6 +66,7 @@ enum CommandResult: Identifiable, Equatable {
         case .space: return "square.stack"
         case .archived: return "archivebox"
         case .history: return "clock"
+        case .command(let command): return command.symbol
         }
     }
 }

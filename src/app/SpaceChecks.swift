@@ -414,6 +414,73 @@ enum SpaceChecks {
         ])
     }
 
+    // The command bar runs commands, as Arc's does, and finds archived tabs.
+    static func checkCommands(_ c: BrowserController) {
+        c.newTab(url: page("Zebra notes"))
+        guard let zebra = c.activeTabID else { return check("zebra tab", false) }
+        // The titles come with the pages.
+        sequence([
+            (1.0, {
+                // A tab archived (by Clear, or left alone for 12 hours).
+                if let data = c.tabData(zebra) { c.addToArchive(data, spaceID: c.activeSpaceID) }
+                c.closeTab(zebra)
+                c.commandQuery = "zebra"
+                check("archived tabs are found", c.commandResults.contains { if case .archived = $0 { return true }; return false },
+                    c.commandResults.map(\.id).joined(separator: ", "))
+                c.newTab(url: page("Commands"))
+            }),
+            (1.0, { checkCommandRuns(c) }),
+        ])
+    }
+
+    static func checkCommandRuns(_ c: BrowserController) {
+        let first: () -> String = { c.commandResults.first?.id ?? "-" }
+        c.commandQuery = "copy"
+        check("\"copy\" offers Copy URL first", first() == "command-copy-url", first())
+        c.runSelectedCommand()
+        let url = c.activeTab?.currentURL ?? c.tabData(c.activeTabID ?? UUID())?.url ?? "-"
+        check("and copies the address (to the checks' own clipboard)",
+            BrowserController.clipboard.string(forType: .string) == url, BrowserController.clipboard.string(forType: .string) ?? "-")
+        c.commandQuery = "copy url as"
+        check("Copy URL as Markdown is there", first() == "command-copy-markdown", first())
+        c.runSelectedCommand()
+        check("and gives [title](url)", BrowserController.clipboard.string(forType: .string) == "[Commands](\(url))",
+            BrowserController.clipboard.string(forType: .string) ?? "-")
+        c.commandQuery = "link"
+        let ids = c.commandResults.map(\.id)
+        check("a command found by another word comes after the search",
+            ids.first == "search-link" && ids.contains("command-copy-url"), ids.joined(separator: ", "))
+        c.commandQuery = "new spa"
+        check("\"new spa\" offers New Space", first() == "command-new-space", first())
+        c.commandQuery = "github.com"
+        check("an address is still opened as typed", first() == "open-https://github.com", first())
+        c.commandQuery = ""
+
+        let tab = c.activeTab
+        let ratio = "document.title = 'ratio ' + window.devicePixelRatio"
+        var before = ""
+        sequence([
+            (0.8, { tab?.executeJavaScript(ratio) }),
+            (0.4, {
+                before = tab?.title ?? "-"
+                c.run(ChaCommand.all.first { $0.id == "zoom-in" }!)
+            }),
+            (0.6, { tab?.executeJavaScript(ratio) }),
+            (0.4, {
+                let after = tab?.title ?? "-"
+                check("Zoom In zooms the page", before.hasPrefix("ratio ") && after.hasPrefix("ratio ") && after != before, "\(before) → \(after)")
+                c.run(ChaCommand.all.first { $0.id == "zoom-reset" }!)
+            }),
+            (0.6, { tab?.executeJavaScript(ratio) }),
+            (0.4, {
+                check("Actual Size puts it back", tab?.title == before, "\(tab?.title ?? "-") vs \(before)")
+                c.closeActiveTab()
+                // The checks' clipboard outlives the run: leave it empty.
+                BrowserController.clipboard.clearContents()
+            }),
+        ])
+    }
+
     // ⌘T finds pages visited before, closed tabs or not.
     static func checkHistory(_ c: BrowserController) {
         c.history.clear()
@@ -511,6 +578,7 @@ enum SpaceChecks {
     }
 
     static func run(_ c: BrowserController) {
+        BrowserController.clipboard.clearContents()  // Whatever a past run left.
         var personal = UUID()
         var work = UUID()
         var pinned = UUID()
@@ -800,7 +868,8 @@ enum SpaceChecks {
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
             (0.4, { checkOrphanPages(c) }),
-            (0.6, { checkBackToTab(c) }),
+            (0.6, { checkCommands(c) }),
+            (6.0, { checkBackToTab(c) }),
             (2.8, { checkHistory(c) }),
             (0.6, { checkSecretSpace(c) }),
             (1.0, { checkSecretSpaceEnd(c) }),

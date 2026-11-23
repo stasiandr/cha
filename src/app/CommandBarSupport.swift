@@ -136,6 +136,23 @@ extension BrowserController {
             }
             results = Array(results.prefix(6))
 
+            // A command whose name starts with what was typed comes before
+            // pages and the search ("copy" means Copy URL, as in Arc); one
+            // found by another word of it comes after the search.
+            let commands = ChaCommand.matching(query).prefix(3)
+            let namedCommands = commands.filter { $0.title.lowercased().hasPrefix(lowered) }
+            let otherCommands = commands.filter { !$0.title.lowercased().hasPrefix(lowered) }
+            for command in namedCommands { results.append(.command(command)) }
+
+            // Archived tabs of this space, as in Arc's archive search.
+            let archivedHits = archive.filter {
+                ($0.spaceID == nil || $0.spaceID == activeSpaceID)
+                    && ($0.title.lowercased().contains(lowered) || $0.url.lowercased().contains(lowered))
+            }
+            for item in archivedHits.prefix(2) {
+                results.append(.archived(id: item.id, title: item.title, url: item.url))
+            }
+
             // Pages visited before in this space (another space has other
             // accounts signed in), but not those an open tab already shows.
             let shown = Set(results.compactMap { result -> String? in
@@ -162,6 +179,7 @@ extension BrowserController {
             } else {
                 results.append(.search(query: query))
             }
+            for command in otherCommands { results.append(.command(command)) }
         }
 
         commandResults = results
@@ -198,6 +216,10 @@ extension BrowserController {
             selectSpace(id)
         case .archived(let id, _, _):
             restoreArchived(id)
+        case .command(let command):
+            closeCommandBar()
+            run(command)
+            return
         case .addCode(let uri):
             if let entry = OTPAuth.parse(uri, site: activeHost) {
                 CodeStore.shared.add(entry)

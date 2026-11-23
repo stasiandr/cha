@@ -46,6 +46,8 @@ enum MainMenu {
             [.command, .shift])
         file.add("Empty Tab", "", target, #selector(MenuTarget.emptyTab), [])
         file.addItem(.separator())
+        file.add("Print…", "p", target, #selector(MenuTarget.printPage))
+        file.addItem(.separator())
         file.addItem(.separator())
         file.add("Passwords…", "", target, #selector(MenuTarget.passwords), [])
         file.add(
@@ -96,6 +98,18 @@ enum MainMenu {
         view.add(
             "Picture in Picture", "p", target, #selector(MenuTarget.pictureInPicture),
             [.command, .option])
+        view.addItem(.separator())
+        view.add("Zoom In", "=", target, #selector(MenuTarget.zoomIn))
+        let zoomInPlus = NSMenuItem(title: "Zoom In", action: #selector(MenuTarget.zoomIn), keyEquivalent: "+")
+        zoomInPlus.target = target
+        zoomInPlus.isAlternate = true  // ⌘+ as well as ⌘=, one row.
+        zoomInPlus.keyEquivalentModifierMask = [.command, .shift]
+        view.addItem(zoomInPlus)
+        view.add("Zoom Out", "-", target, #selector(MenuTarget.zoomOut))
+        view.add("Actual Size", "0", target, #selector(MenuTarget.zoomReset))
+        view.addItem(.separator())
+        view.add("Developer Tools", "i", target, #selector(MenuTarget.devTools), [.command, .option])
+        view.add("View Source", "u", target, #selector(MenuTarget.viewSource), [.command, .option])
         bar.addItem(submenu: view, title: "View")
 
         // Tabs: pin, favourite, copy, clear — the tab-level keys Arc has.
@@ -105,6 +119,9 @@ enum MainMenu {
             "Add to Favorites", "d", target, #selector(MenuTarget.addToFavorites),
             [.command, .shift])
         tabs.add("Copy Link", "c", target, #selector(MenuTarget.copyLink), [.command, .shift])
+        tabs.add(
+            "Copy Link as Markdown", "c", target, #selector(MenuTarget.copyMarkdown),
+            [.command, .shift, .option])
         tabs.add("Duplicate Tab", "", target, #selector(MenuTarget.duplicateTab), [])
         tabs.add(
             "Back to Pinned Address", "", target, #selector(MenuTarget.resetPinned), [])
@@ -253,6 +270,13 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
         c.addToFavorites(id)
     }
     @objc func copyLink() { controller?.copyLink() }
+    @objc func copyMarkdown() { controller?.copyLinkAsMarkdown() }
+    @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }
+    @objc func zoomOut() { controller?.chromeCommand(ChaCommand.Chrome.zoomOut) }
+    @objc func zoomReset() { controller?.chromeCommand(ChaCommand.Chrome.zoomReset) }
+    @objc func printPage() { controller?.chromeCommand(ChaCommand.Chrome.print) }
+    @objc func devTools() { controller?.chromeCommand(ChaCommand.Chrome.devTools) }
+    @objc func viewSource() { controller?.chromeCommand(ChaCommand.Chrome.viewSource) }
     @objc func showWindow() { controller?.showMainWindow() }
     @objc func makeDefaultBrowser() { URLOpener.makeDefault() }
     @objc func pictureInPicture() { controller?.togglePictureInPicture() }

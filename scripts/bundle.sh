@@ -37,6 +37,7 @@ rsync -a --delete --exclude /Contents/MacOS/cha.d --exclude /Contents/_CodeSigna
   build/src/Release/cha.app/ build/cha.app/
 # The icon (scripts/make-icon.swift draws it). CMake's resource copy is not
 # run for a Swift target under Ninja, so it is put in here.
+mkdir -p build/cha.app/Contents/Resources
 cp src/mac/cha.icns build/cha.app/Contents/Resources/cha.icns
 rm -f build/cha.app/Contents/MacOS/cha.d
 codesign --force --sign "${identity:--}" --timestamp=none build/cha.app >/dev/null
