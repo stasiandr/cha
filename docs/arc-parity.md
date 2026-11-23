@@ -151,12 +151,12 @@ now says so and skips (exit 75) instead of reporting those failures.
 - Capture: ⇧⌘2, a dragged part of the page or all of it, to the clipboard.
   (capture)
 - Chrome extensions from the Chrome Web Store: installed by link or ID,
-  keep their store ID, loaded at launch, popups and options open from the
-  Extensions window. (extensions; by hand: uBlock Origin Lite blocks ads,
-  its popup opens. Dark Reader installs and its popup opens, but it did not
-  restyle a page in that run: extensions that need a toolbar button click
-  or Chrome's tab strip may not fully work.) Only the default profile's
-  spaces get them.
+  keep their store ID, loaded at launch, with buttons under the address
+  that open their popups; options from the button's menu. (extensions; by
+  hand: uBlock Origin Lite blocks an ad request a control run lets
+  through; Dark Reader restyles a light page; extensions get chrome.tabs,
+  chrome.scripting, chrome.storage and their service worker.) Only the
+  default profile's spaces get them.
 - Arc Max on Apple's on-device model: Ask This Page / Summarize (⇧⌘F) and
   Tidy Tab Titles; nothing leaves the Mac, no key. (ask)
 - The hidden sidebar peeks out at the left edge. (spaces)
@@ -166,10 +166,10 @@ now says so and skips (exit 75) instead of reporting those failures.
 Done earlier: profiles per space, Little Arc, Peek, picture in picture,
 the meeting card, the secret space, per-space history.
 
-Not done:
-- Sync between devices (Arc Sync). It would go through cloudsync
-  (sync.stasiandr.com), but needs a sync identity created on that server,
-  its recovery phrase kept by the user, and a second Mac with cha to sync
-  with; none of that should be set up without the user.
-- An extensions toolbar (action buttons on pages): popups open from the
-  Extensions window instead.
+- Sync between Macs (cha ▸ Sync…): spaces, their pinned tabs and
+  folders, and favourites, through cloudsync, end to end encrypted. (sync:
+  two profiles against a local cloudsync server.) Not yet turned on
+  against sync.stasiandr.com: that starts with "Start Sync on This Mac".
+
+Not done: nothing left from Arc's Mac features list as of 2026-11-24.
+The windowed run waits for an unlocked, idle Mac.
