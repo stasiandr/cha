@@ -1210,9 +1210,35 @@ enum TestScenarios {
                 let little = LittleWindowController.open.first
                 little?.close()
             }
+            // Air Traffic Control: a rule sends a link to its space.
+            var routedSpace: UUID?
+            at(8.2) {
+                controller.addSpace()
+                controller.finishEditing()
+                routedSpace = controller.activeSpaceID
+                controller.selectSpace(at: 0)
+                RoutingStore.shared.rules = [RouteRule(match: "Routed page", spaceID: routedSpace!)]
+                LittleWindowController.open.forEach { $0.window.close() }
+                let event = NSAppleEventDescriptor(
+                    eventClass: AEEventClass(kInternetEventClass), eventID: AEEventID(kAEGetURL),
+                    targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID),
+                    transactionID: AETransactionID(kAnyTransactionID))
+                event.setParam(NSAppleEventDescriptor(string: "data:text/html,<title>Routed page</title>"), forKeyword: keyDirectObject)
+                URLOpener.shared.handleGetURL(event, withReplyEvent: NSAppleEventDescriptor.null())
+            }
+            at(8.6) {
+                SpaceChecks.check("a routed link opens as a tab of its space", controller.activeSpaceID == routedSpace
+                    && controller.activeSpace.tabs.contains { $0.url.contains("Routed") })
+                SpaceChecks.check("not in a little window", !LittleWindowController.open.contains { $0.url.contains("Routed") })
+                SpaceChecks.check("rules are kept", RoutingStore().rules.first?.match == "Routed page")
+                SpaceChecks.check("a rule doesn't claim other links", RoutingStore.shared.space(for: "https://example.com/", in: controller.spaces) == nil)
+                RoutingStore.shared.rules = []
+            }
             at(8) {
                 SpaceChecks.check("closing it closes the page too", LittleWindowController.open.isEmpty)
                 SpaceChecks.check("and leaves the main window alone", controller.activeSpace.tabs.count == tabsBefore + 1)
+            }
+            at(9) {
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }

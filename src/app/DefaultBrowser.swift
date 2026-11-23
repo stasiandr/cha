@@ -110,8 +110,9 @@ final class URLOpener: NSObject {
         let urls = pending
         pending = []
         // Like Little Arc: each link opens in a little window over the app
-        // it came from; "Open in cha" moves it into the main window.
-        for url in urls { controller.openLittleWindow(url, over: callerFrame, callerWindow: callerWindow) }
+        // it came from; "Open in cha" moves it into the main window. A link
+        // a routing rule claims goes to its space instead (Routing.swift).
+        for url in urls { controller.openFromOtherApp(url, over: callerFrame, callerWindow: callerWindow) }
         callerFrame = nil
         callerWindow = nil
         NSLog("OPENED %@", urls.joined(separator: " "))

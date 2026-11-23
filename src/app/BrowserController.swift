@@ -28,6 +28,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // The Boost editor (Boosts.swift): the site it edits, its panel, Zap mode.
     @Published var boostSite: String?
     var boostPanel: NSPanel?
+    var routingPanel: NSPanel?
     @Published var zapping = false
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true

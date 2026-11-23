@@ -143,6 +143,7 @@ enum MainMenu {
         spaces.add("Edit Space…", "", target, #selector(MenuTarget.editSpace), [])
         spaces.add("New Folder", "", target, #selector(MenuTarget.newFolder), [])
         spaces.add("Delete Space…", "", target, #selector(MenuTarget.deleteSpace), [])
+        spaces.add("Route Links to Spaces…", "", target, #selector(MenuTarget.routing), [])
         spaces.addItem(.separator())
         spaces.add(
             "Next Space", String(UnicodeScalar(NSRightArrowFunctionKey)!), target,
@@ -277,6 +278,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func copyMarkdown() { controller?.copyLinkAsMarkdown() }
     @objc func splitView() { controller?.startSplit() }
     @objc func boostSite() { controller?.openBoostEditor() }
+    @objc func routing() { controller?.openRoutingRules() }
     @objc func closeSplitView() { controller?.closeSplit() }
     @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }
     @objc func zoomOut() { controller?.chromeCommand(ChaCommand.Chrome.zoomOut) }

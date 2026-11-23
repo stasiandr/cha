@@ -48,6 +48,7 @@ struct ChaCommand: Equatable {
         .init(id: "split", title: "Split View", symbol: "rectangle.split.2x1", keys: "⌃⇧=", words: ["side by side"]),
         .init(id: "unsplit", title: "Close Split View", symbol: "rectangle", keys: "⌃⇧-", words: ["separate"]),
         .init(id: "boost", title: "Boost This Site", symbol: "paintbrush", keys: "", words: ["css", "style", "customize", "zap"]),
+        .init(id: "routing", title: "Route Links to Spaces…", symbol: "arrow.triangle.branch", keys: "", words: ["air traffic control", "rules", "links from apps"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
     ]
 
@@ -96,6 +97,7 @@ extension BrowserController {
         case "new-folder": _ = addFolder()
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
+        case "routing": openRoutingRules()
         case "boost": openBoostEditor()
         case "split": startSplit()
         case "unsplit": closeSplit()
