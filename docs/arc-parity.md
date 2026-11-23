@@ -121,5 +121,40 @@ includes loading the page itself.) The swipe is checked through synthesized
 scroll events fed to the handler; the direction for natural scrolling
 follows `isDirectionInvertedFromDevice`.
 
-Not done, deliberately: profiles per space (separate cookies), Little Arc,
-split view, boosts. They are Arc features, but not part of spaces as such.
+## Beyond spaces (2026-11-24, branch arc-parity)
+
+Each line names its check: a scenario of `scripts/check.sh` (`CHA_TEST=…`)
+or the `spaces` checks. All pass headless; the `spaces` ones also in a real
+window (`check.sh window`, Mac idle), apart from the sidebar-slide timing
+checks, which fail the same way on main while the screen is locked.
+
+- Command bar commands: typing "copy", "new space", "zoom"… runs Copy URL,
+  Copy URL as Markdown, Duplicate, Pin, Favorite, Close, Reopen, Clear,
+  Reload, Find, Zoom In/Out/Actual Size, Print, Developer Tools, View
+  Source, Picture in Picture, Toggle Sidebar, New Space, Edit Space, New
+  Folder, Little Window, Downloads, Split View, Boost, New Note, Capture,
+  Route Links; archived tabs are found too. (spaces)
+- Arc's keys: ⌘= ⌘- ⌘0, ⌘P, ⌥⌘I, ⌥⌘U, ⌥⇧⌘C, ⌃⇧= / ⌃⇧-, ⌃⌘N, ⇧⌘2. (spaces)
+- ⌃Tab / ⌃⇧Tab through recently used tabs, ⌘Tab-style. (spaces, real key
+  events)
+- A speaker on tabs that play sound (click mutes), and a mini player in the
+  sidebar for a tab left playing: play/pause, back/forward (the page's
+  Media Session handlers), mute, back to the tab. (sound)
+- Split View: two tabs side by side, follow the window, survive a restart.
+  (split)
+- Boosts: per-site CSS, script and Zap, live in every tab of the site,
+  kept in boosts.json. (boost)
+- Air Traffic Control: links from other apps routed to a space by rule,
+  the rest to a little window. (openurl)
+- Notes: ⌃⌘N, rich text, kept as typed in Notes/. (notes)
+- Capture: ⇧⌘2, a dragged part of the page or all of it, to the clipboard.
+  (capture)
+- The hidden sidebar peeks out at the left edge. (spaces)
+- Close Tabs Below / Close Other Tabs, a "Copied" toast, and each space's
+  own archive time (12 h, 24 h, 7 d, 30 d, never). (spaces)
+
+Done earlier: profiles per space, Little Arc, Peek, picture in picture,
+the meeting card, the secret space, per-space history.
+
+Not done: Chrome extensions, Easels (free-form canvases; notes cover the
+writing part), Arc Max (AI), syncing between Macs and the phone app.
