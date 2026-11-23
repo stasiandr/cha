@@ -824,6 +824,85 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "split":
+            // Split View: two tabs side by side, as in Arc.
+            func page(_ t: String) -> String { "data:text/html,<title>\(t)</title><h1>\(t)</h1>" }
+            var left: UUID?, right: UUID?, other: UUID?
+            func win(_ id: UUID?) -> NSWindow? { id.flatMap { controller.liveTabs[$0]?.nativeWindow } }
+            func onScreen(_ id: UUID?) -> Bool { win(id).map { $0.isVisible && $0.parent === controller.window } ?? false }
+            func halves() -> Bool {
+                guard let l = win(left)?.frame, let r = win(right)?.frame else { return false }
+                let page = controller.contentScreenRect
+                return abs(l.minX - page.minX) < 1.5 && abs(r.maxX - page.maxX) < 1.5
+                    && abs(r.minX - l.maxX - BrowserController.splitGap) < 1.5
+                    && abs(l.width - r.width) < 2 && abs(l.height - page.height) < 1.5
+            }
+            at(1) {
+                controller.newTab(url: page("Other"))
+                other = controller.activeTabID
+                controller.newTab(url: page("Left"))
+                left = controller.activeTabID
+            }
+            at(2.5) {
+                controller.run(ChaCommand.all.first { $0.id == "split" }!)
+                SpaceChecks.check("⌃⇧= asks what to open beside", controller.commandMode == .split && controller.commandPanel?.isVisible == true)
+                controller.commandQuery = page("Right")
+                controller.runSelectedCommand()
+                right = controller.activeTabID
+            }
+            at(4) {
+                SpaceChecks.check("it opens beside the tab", right != left && left.flatMap { controller.splitPartner($0) } == right)
+                SpaceChecks.check("both pages are on screen", onScreen(left) && onScreen(right))
+                SpaceChecks.check("each on its half of the page area", halves(),
+                    "\(win(left)?.frame ?? .zero) \(win(right)?.frame ?? .zero) in \(controller.contentScreenRect)")
+                shot("split-view")
+                controller.activateTab(left)
+            }
+            at(4.6) {
+                SpaceChecks.check("going to the left one keeps both", controller.activeTabID == left && onScreen(right) && halves())
+                if let tab = right.flatMap({ controller.liveTabs[$0] }) { controller.bringForward(tab, why: "check") }
+            }
+            at(5.2) {
+                SpaceChecks.check("a click in the other page puts it in front", controller.activeTabID == right && onScreen(left))
+                // No fade: off screen, a fade ends only with the next event.
+                controller.activateTab(other, transition: .none)
+            }
+            at(6.8) {
+                SpaceChecks.check("another tab hides both", onScreen(other) && !onScreen(left) && !onScreen(right))
+                controller.activateTab(right)
+            }
+            at(8.2) {
+                SpaceChecks.check("and coming back shows both again", onScreen(left) && onScreen(right) && halves())
+                if let window = controller.window {
+                    var frame = window.frame
+                    frame.size.width += 160
+                    window.setFrame(frame, display: true)
+                }
+            }
+            at(8.8) {
+                SpaceChecks.check("the halves follow the window", halves(), "\(win(left)?.frame ?? .zero) \(win(right)?.frame ?? .zero) in \(controller.contentScreenRect)")
+                let data = try? JSONEncoder().encode(left.flatMap { controller.tabData($0) })
+                let back = data.flatMap { try? JSONDecoder().decode(TabData.self, from: $0) }
+                SpaceChecks.check("the pair is kept with the tabs", back?.splitWith == right)
+                controller.run(ChaCommand.all.first { $0.id == "unsplit" }!)
+            }
+            at(10) {
+                SpaceChecks.check("⌃⇧- puts them apart", left.flatMap { controller.splitPartner($0) } == nil
+                    && onScreen(right) && !onScreen(left)
+                    && (win(right)?.frame.isClose(to: controller.contentScreenRect) ?? false))
+                if let left, let right { controller.split(left, with: right) }
+            }
+            at(11.4) {
+                SpaceChecks.check("Split with Current Tab pairs them again", left.flatMap { controller.splitPartner($0) } == right)
+                if let right { controller.closeTab(right) }
+            }
+            at(13) {
+                SpaceChecks.check("closing one half ends the split, the other takes the page", left.flatMap { controller.tabData($0)?.splitWith } == nil
+                    && controller.activeTabID == left && onScreen(left) && (win(left)?.frame.isClose(to: controller.contentScreenRect) ?? false))
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "sound":
             // A tab playing sound: its speaker, mute, and the mini player once
             // it is left. (The checks run with Chromium's sound off.)
@@ -1455,7 +1534,8 @@ enum TestScenarios {
         image.addRepresentation(rep)
         // Chromium's pixels don't come through cacheDisplay, so the page is
         // drawn as a plain card where its window sits, to judge the layout.
-        if let page = window.childWindows?.first(where: { $0.isVisible && !($0 is NSPanel) }) {
+        // Every page on screen: two in Split View.
+        for page in (window.childWindows ?? []) where page.isVisible && !(page is NSPanel) {
             let rect = NSRect(
                 x: page.frame.minX - window.frame.minX, y: page.frame.minY - window.frame.minY,
                 width: page.frame.width, height: page.frame.height)

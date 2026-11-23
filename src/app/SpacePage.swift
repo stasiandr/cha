@@ -238,6 +238,12 @@ struct TabRow: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 0)
+            if controller.splitPartner(tab.id) != nil {
+                Image(systemName: "rectangle.split.2x1")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .help("In Split View")
+            }
             TabSpeaker(controller: controller, tabID: tab.id)
             if tab.hasLeftPinnedURL, hovered || isActive {
                 Button {
@@ -324,6 +330,13 @@ struct TabMenu: View {
     var body: some View {
         Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { controller.togglePin(tab.id) }
         Button("Add to Favorites") { controller.addToFavorites(tab.id) }
+        if controller.splitPartner(tab.id) != nil {
+            Button("Close Split View") { controller.unsplit(tab.id); controller.activateTab(tab.id) }
+        } else if let active = controller.activeTabID, active != tab.id,
+            controller.spaceContaining(active)?.id == space.id
+        {
+            Button("Split with Current Tab") { controller.split(active, with: tab.id) }
+        }
         if tab.hasLeftPinnedURL {
             Button("Back to Pinned Address") { controller.resetToPinnedURL(tab.id) }
         }

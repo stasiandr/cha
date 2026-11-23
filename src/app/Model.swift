@@ -16,6 +16,8 @@ struct TabData: Codable, Identifiable, Equatable {
     var lastActive: Date?
     // A name given by hand; the page's own title no longer replaces it.
     var customTitle: String?
+    // The tab shown beside this one (Split View).
+    var splitWith: UUID?
 
     var displayTitle: String {
         if let customTitle, !customTitle.isEmpty { return customTitle }

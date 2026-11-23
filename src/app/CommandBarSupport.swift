@@ -232,6 +232,7 @@ extension BrowserController {
         switch commandMode {
         case .newTab: newTab(url: url)
         case .current: navigate(to: url)
+        case .split: openInSplit(url)
         }
     }
 }

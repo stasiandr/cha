@@ -126,6 +126,9 @@ enum MainMenu {
         tabs.add(
             "Back to Pinned Address", "", target, #selector(MenuTarget.resetPinned), [])
         tabs.addItem(.separator())
+        tabs.add("Split View", "=", target, #selector(MenuTarget.splitView), [.control, .shift])
+        tabs.add("Close Split View", "-", target, #selector(MenuTarget.closeSplitView), [.control, .shift])
+        tabs.addItem(.separator())
         tabs.add(
             "Clear Today's Tabs", "k", target, #selector(MenuTarget.clearToday),
             [.command, .shift])
@@ -271,6 +274,8 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     }
     @objc func copyLink() { controller?.copyLink() }
     @objc func copyMarkdown() { controller?.copyLinkAsMarkdown() }
+    @objc func splitView() { controller?.startSplit() }
+    @objc func closeSplitView() { controller?.closeSplit() }
     @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }
     @objc func zoomOut() { controller?.chromeCommand(ChaCommand.Chrome.zoomOut) }
     @objc func zoomReset() { controller?.chromeCommand(ChaCommand.Chrome.zoomReset) }

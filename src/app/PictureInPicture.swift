@@ -88,6 +88,8 @@ extension BrowserController {
     // Called on every tab change, the space switches included.
     func pictureInPictureForSwitch(from old: UUID?, to new: UUID?) {
         guard Self.autoPictureInPicture, old != new else { return }
+        // The other half of a split: both stay on screen.
+        if let new, splitPartner(new) == old { return }
         if let old, let tab = liveTabs[old] {
             // Once the tab is out of sight, as Chrome does: Meet ignores the
             // call while its page is still visible.

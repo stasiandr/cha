@@ -275,7 +275,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard let id = activeSpace.activeTabID, let tab = liveTabs[id],
             let native = tab.nativeWindow
         else { return }
-        native.setFrame(contentScreenRect, display: true)
+        native.setFrame(pageFrame(for: id), display: true)
+        if let partner = splitPartner(id), let other = liveTabs[partner]?.nativeWindow {
+            other.setFrame(pageFrame(for: partner), display: true)
+        }
     }
 
     // The shadow needs a path of its own: the well itself is transparent, the
@@ -605,12 +608,14 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
             NotificationCenter.default.addObserver(forName: name, object: native, queue: .main) {
                 [weak self, weak native] _ in
-                guard let self, let native, !self.pinning, native === self.activeTab?.nativeWindow,
+                guard let self, let native, !self.pinning,
+                    let id = self.liveTabs.first(where: { $0.value.nativeWindow === native })?.key,
+                    id == self.activeTabID || self.activeTabID.flatMap({ self.splitPartner($0) }) == id,
                     native.parent != nil, !self.pageAnimating, !self.sidebarAnimating,
                     self.window?.inLiveResize == false,
                     native.alphaValue > 0.99
                 else { return }
-                let target = self.contentScreenRect
+                let target = self.pageFrame(for: id)
                 // Chromium rounds frames: only a real move counts, and the
                 // fix-up itself doesn't come back here.
                 guard !native.frame.isClose(to: target) else { return }
@@ -641,13 +646,19 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func showOnly(tabID: UUID, transition: PageTransition = .none) {
         guard let window else { return }
-        let target = contentScreenRect
+        let target = pageFrame(for: tabID)
+        // Split View: the other tab of the pair is shown beside it, at once.
+        let partner = splitPartner(tabID)
+        if let partner, let data = tabData(partner) { liveTab(partner, url: data.url) }
         var incoming: NSWindow?
+        var beside: NSWindow?
         var outgoing: [NSWindow] = []
         for (id, tab) in liveTabs {
             guard let native = tab.nativeWindow else { continue }
             if id == tabID {
                 incoming = native
+            } else if id == partner {
+                beside = native
             } else if native.parent != nil || native.isVisible {
                 outgoing.append(native)
             }
@@ -656,6 +667,13 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             for native in outgoing { hidePage(native) }
             return
         }
+        if let partner, let beside {
+            if beside.parent !== window { window.addChildWindow(beside, ordered: .above) }
+            beside.alphaValue = 1
+            beside.setFrame(pageFrame(for: partner), display: true)
+            beside.orderFront(nil)
+        }
+        let transition = partner == nil ? transition : .none
         let wasShown = incoming.parent === window && incoming.isVisible && incoming.alphaValue > 0.99
         let animate = transition != .none && !wasShown && !outgoing.isEmpty
         if incoming.parent !== window { window.addChildWindow(incoming, ordered: .above) }
@@ -686,7 +704,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             }
         } completionHandler: { [weak self] in
             guard let self else { return }
-            for native in outgoing where native !== self.activeTab?.nativeWindow {
+            // Not the pages shown since (the tab in front and the other half
+            // of its split).
+            let shown = [self.activeTabID, self.activeTabID.flatMap { self.splitPartner($0) }]
+                .compactMap { $0.flatMap { self.liveTabs[$0]?.nativeWindow } }
+            for native in outgoing where !shown.contains(where: { $0 === native }) {
                 self.hidePage(native)
             }
             incoming.alphaValue = 1
@@ -772,6 +794,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // ⌘W: unpinned tabs go to the archive; pinned ones and favourites are
     // only unloaded and stay where they are.
     func closeTab(_ id: UUID) {
+        // The other half of a split takes the page area.
+        let partner = tabData(id)?.isPinned == true ? nil : splitPartner(id)
+        if tabData(id)?.isPinned != true { unsplit(id) }
         if favorites.contains(where: { $0.id == id }) || tabData(id)?.isPinned == true {
             unload(id)
             if activeSpace.activeTabID == id { activateNeighbor(of: id, in: activeSpace) }
@@ -784,10 +809,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         recentlyClosed.append(ClosedTab(tab: space.tabs[index], spaceID: space.id, index: index))
         space.tabs.remove(at: index)
         if space.activeTabID == id {
-            // The next tab below, or above when it was the last one.
+            // The other half of its split, else the next tab below, or above
+            // when it was the last one.
             let unpinned = space.tabs.filter { !$0.isPinned }
             let next = space.tabs[index...].first { !$0.isPinned } ?? unpinned.last
-            space.activeTabID = next?.id
+            space.activeTabID = partner ?? next?.id
         }
         replace(space)
         if space.id == activeSpaceID { activateTab(space.activeTabID) }
@@ -908,6 +934,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func moveTab(_ id: UUID, toSpace spaceID: UUID) {
+        unsplit(id)
         guard spaces.contains(where: { $0.id == spaceID }),
             spaceContaining(id)?.id != spaceID
         else { return }
@@ -1243,6 +1270,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         if activeSpace.activeTabID == id {
             showOnly(tabID: id)
             if !Diagnostics.quiet { tab.focus() }
+        } else if let active = activeTabID, splitPartner(active) == id {
+            showOnly(tabID: active)  // The other half of the split in front.
         } else if let native = tab.nativeWindow {
             native.orderOut(nil)
         }

@@ -45,6 +45,8 @@ struct ChaCommand: Equatable {
         .init(id: "edit-space", title: "Edit Space", symbol: "paintpalette", keys: "", words: ["rename space", "theme", "colour", "color"]),
         .init(id: "new-folder", title: "New Folder", symbol: "folder.badge.plus", keys: "", words: []),
         .init(id: "little-window", title: "New Little Window", symbol: "macwindow", keys: "⌥⌘N", words: ["little arc"]),
+        .init(id: "split", title: "Split View", symbol: "rectangle.split.2x1", keys: "⌃⇧=", words: ["side by side"]),
+        .init(id: "unsplit", title: "Close Split View", symbol: "rectangle", keys: "⌃⇧-", words: ["separate"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
     ]
 
@@ -93,6 +95,8 @@ extension BrowserController {
         case "new-folder": _ = addFolder()
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
+        case "split": startSplit()
+        case "unsplit": closeSplit()
         default: break
         }
     }

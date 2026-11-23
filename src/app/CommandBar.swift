@@ -6,6 +6,7 @@ import SwiftUI
 enum CommandMode {
     case newTab  // ⌘T — the result opens in a new tab.
     case current  // ⌘L — the result replaces what the active tab shows.
+    case split  // ⌃⇧= — the result opens beside the active tab.
 }
 
 enum CommandResult: Identifiable, Equatable {
