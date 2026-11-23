@@ -414,6 +414,60 @@ enum SpaceChecks {
         ])
     }
 
+    // ⌃Tab goes back through the tabs in the order they were used.
+    static func checkRecentTabs(_ c: BrowserController) {
+        var ids: [UUID] = []
+        for name in ["Recent A", "Recent B", "Recent C"] {
+            c.newTab(url: page(name))
+            if let id = c.activeTabID { ids.append(id) }
+        }
+        guard ids.count == 3 else { return check("recent tabs opened", false) }
+        let (a, b, cTab) = (ids[0], ids[1], ids[2])
+        // Real key events, through the app's event queue.
+        func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags, type: NSEvent.EventType = .keyDown) {
+            guard let event = NSEvent.keyEvent(
+                with: type, location: .zero, modifierFlags: flags, timestamp: 0,
+                windowNumber: c.window.windowNumber, context: nil,
+                characters: type == .flagsChanged ? "" : "\t", charactersIgnoringModifiers: type == .flagsChanged ? "" : "\t",
+                isARepeat: false, keyCode: code)
+            else { return }
+            NSApp.postEvent(event, atStart: false)
+        }
+        // Letting go of ⌃: a flagsChanged event with no ⌃ in it.
+        func release() { key(59, [], type: .flagsChanged) }
+        var leastRecent: UUID?
+        sequence([
+            (0.2, { key(48, .control) }),
+            (0.3, {
+                check("⌃Tab goes to the tab used before", c.activeTabID == b)
+                release()
+                key(48, .control)
+            }),
+            (0.3, {
+                check("⌃Tab again comes back", c.activeTabID == cTab)
+                release()
+                key(48, .control)
+                key(48, .control)
+            }),
+            (0.3, {
+                check("holding ⌃, Tab twice goes two back", c.activeTabID == a)
+                release()
+            }),
+            (0.3, {
+                check("letting go makes it the most recent, the one left next",
+                    c.recentTabs.prefix(2) == [a, cTab], "\(c.recentTabs.prefix(3).map { $0 == a ? "A" : $0 == b ? "B" : $0 == cTab ? "C" : "?" })")
+                leastRecent = c.recentTabs.last
+                key(48, [.control, .shift])
+            }),
+            (0.3, {
+                check("⌃⇧Tab goes the other way, to the least recent", c.activeTabID == leastRecent,
+                    "now \(c.activeTabID.flatMap { c.tabData($0)?.displayTitle } ?? "-"), least \(leastRecent.flatMap { c.tabData($0)?.displayTitle } ?? "-")")
+                release()
+                for id in ids { c.closeTab(id) }
+            }),
+        ])
+    }
+
     // The command bar runs commands, as Arc's does, and finds archived tabs.
     static func checkCommands(_ c: BrowserController) {
         c.newTab(url: page("Zebra notes"))
@@ -868,7 +922,8 @@ enum SpaceChecks {
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
             (0.4, { checkOrphanPages(c) }),
-            (0.6, { checkCommands(c) }),
+            (0.6, { checkRecentTabs(c) }),
+            (2.2, { checkCommands(c) }),
             (6.0, { checkBackToTab(c) }),
             (2.8, { checkHistory(c) }),
             (0.6, { checkSecretSpace(c) }),

@@ -78,6 +78,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var commandBarOpens = 0  // How many times it opened (the checks).
     @Published var commandFocusToken = 0  // Bumped to focus and select the field.
     var commandKeyMonitor: Any?
+    // ⌃Tab: the tabs in recent order while ⌃ is held, and where it is.
+    var recentTabsMonitor: Any?
+    var recentCycle: [UUID]?
+    var recentCycleIndex = 0
+    var keepRecency = false
     var pinning = false
     var swipeMonitor: Any?
     var swipe = SwipeTracker()
@@ -214,6 +219,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Diagnostics.mark("window")
         applySpaceTint()
         installSwipeMonitor()
+        installRecentTabsMonitor()
         installReopen()
         window.acceptsMouseMovedEvents = true
         // Spaces' own profiles get ready while the first page loads.
@@ -540,7 +546,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         var space = activeSpace
         space.activeTabID = id
         activeSpace = space
-        update(tabID: id) { $0.lastActive = Date() }
+        if !keepRecency { update(tabID: id) { $0.lastActive = Date() } }
         addressText = data.url
 
         let tab = liveTab(id, url: data.url)
