@@ -218,7 +218,9 @@ extension BrowserController {
     }
 
     func tab(_ tab: ChaTab, didSendMessage message: String) {
-        if message.hasPrefix("zap "), let site = BoostStore.site(tab.currentURL) {
+        if message.hasPrefix("note ") {
+            saveNote(message)
+        } else if message.hasPrefix("zap "), let site = BoostStore.site(tab.currentURL) {
             let selector = String(message.dropFirst(4))
             var boost = BoostStore.shared.boosts[site] ?? Boost(host: site)
             if !boost.zapped.contains(selector) { boost.zapped.append(selector) }

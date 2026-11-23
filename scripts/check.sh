@@ -158,6 +158,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/bo
   echo "boost FAILED"; failed=$((failed + 1))
 fi
 
+step "Notes: written, kept, back after reopening"
+run_scenario notes 30; code=$?
+grep -E 'CHECK ' build/check/notes.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/notes.log; then
+  echo "notes FAILED"; failed=$((failed + 1))
+fi
+
 step "Split View: two tabs side by side"
 run_scenario split 30; code=$?
 grep -E 'CHECK ' build/check/split.log | sed 's/^.*cha\[[^]]*\] //'

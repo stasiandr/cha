@@ -964,6 +964,39 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "notes":
+            // Notes: written, kept as typed, back after the tab is reopened.
+            var noteID: UUID?
+            func tab() -> ChaTab? { controller.activeTab }
+            at(1) { controller.run(ChaCommand.all.first { $0.id == "new-note" }!) }
+            at(3) {
+                noteID = tab().flatMap { NoteStore.id(in: $0.currentURL) }
+                SpaceChecks.check("New Note opens a note as a tab", noteID != nil, tab()?.currentURL.prefix(80).description ?? "-")
+                SpaceChecks.check("named New Note until written", tab()?.title == "New Note", tab()?.title ?? "-")
+                tab()?.executeJavaScript(withUserGesture:
+                    "const n = document.getElementById('note'); n.focus(); document.execCommand('insertText', false, 'Shopping list');"
+                    + "document.execCommand('insertParagraph'); document.execCommand('insertText', false, 'milk & bread #2 100%');")
+            }
+            at(4.5) {
+                SpaceChecks.check("its first line names the tab", tab()?.title == "Shopping list", tab()?.title ?? "-")
+                let saved = noteID.map { NoteStore.load($0) }
+                SpaceChecks.check("what is written is kept as it is typed",
+                    saved?.title == "Shopping list" && saved?.html.contains("milk &amp; bread #2 100%") == true, saved?.html ?? "-")
+                if let id = controller.activeTabID { controller.unload(id) }
+            }
+            at(5) {
+                if let id = controller.activeTabID { controller.activateTab(id) }
+            }
+            at(7) {
+                let text = "document.title = 'TEXT ' + document.getElementById('note').innerText.replace(/\\n+/g, ' / ')"
+                tab()?.executeJavaScript(text)
+            }
+            at(7.5) {
+                SpaceChecks.check("reopened, the note comes back", tab()?.title == "TEXT Shopping list / milk & bread #2 100%", tab()?.title ?? "-")
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "sound":
             // A tab playing sound: its speaker, mute, and the mini player once
             // it is left. (The checks run with Chromium's sound off.)
