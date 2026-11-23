@@ -31,6 +31,7 @@
 @property(nonatomic) BOOL usesCameraOrMicrophone;
 @property(nonatomic) BOOL hasFloatingWindow;
 - (void)cefWindowCreated;
+- (void)cefWindowActivated;
 - (void)cefWindowDestroyed:(BOOL)browserAlive;
 - (void)cefBrowserClosed;
 - (void)cefRequestsNewTab:(NSString*)url;
@@ -711,6 +712,14 @@ class TabHost : public CefClient,
     w->Show();
     [tab_ cefWindowCreated];
   }
+  // Chromium activates a tab's window when its page asks to be in front:
+  // the floating window's "Back to tab" (FocusInitiator), a popup focusing
+  // its opener. cha switches to the tab then.
+  void OnWindowActivationChanged(CefRefPtr<CefWindow>, bool active) override {
+    if (active) {
+      [tab_ cefWindowActivated];
+    }
+  }
   void OnWindowDestroyed(CefRefPtr<CefWindow>) override {
     view = nullptr;
     window = nullptr;
@@ -1105,6 +1114,13 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
     return;
   }
   [self.delegate tabDidBecomeReady:self];
+}
+
+- (void)cefWindowActivated {
+  id<ChaTabDelegate> delegate = self.delegate;
+  if ([delegate respondsToSelector:@selector(tabWantsToBeShown:)]) {
+    [delegate tabWantsToBeShown:self];
+  }
 }
 
 // Normally the browser has closed by now. One that outlives its window

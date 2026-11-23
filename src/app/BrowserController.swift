@@ -1272,6 +1272,36 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         }
     }
 
+    /// Chromium made a tab's window active on the page's behalf (the
+    /// floating call window's "Back to tab"): that tab comes forward, in its
+    /// space, with cha in front. Checked a moment later, so an activation
+    /// cha itself caused while switching away is not taken for a request.
+    func tabWantsToBeShown(_ tab: ChaTab) {
+        DispatchQueue.main.async { [weak self, weak tab] in
+            guard let self, let tab, tab.nativeWindow?.isKeyWindow == true else { return }
+            self.bringForward(tab)
+        }
+    }
+
+    func bringForward(_ tab: ChaTab) {
+        guard !isQuitting, let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
+        Diagnostics.tabLog("tab asked to come forward: \(id == activeSpace.activeTabID ? "already in front" : "switched to it")")
+        showTab(id)
+        if !Diagnostics.quiet {
+            window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            tab.focus()
+        }
+    }
+
+    /// Switches to the tab, in whichever space has it.
+    func showTab(_ id: UUID) {
+        if let space = spaceContaining(id), space.id != activeSpaceID {
+            selectSpace(space.id, animated: false)
+        }
+        if activeSpace.activeTabID != id { activateTab(id) }
+    }
+
     func tabDidFinishLoad(_ tab: ChaTab) {
         Diagnostics.mark("first-load-end")
         guard let id = tabIDsByObject[ObjectIdentifier(tab)],

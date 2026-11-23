@@ -22,6 +22,9 @@ NS_ASSUME_NONNULL_BEGIN
 // A link to open in a new tab without leaving this one (⌘-click, the
 // context menu's Open Link in New Tab).
 - (void)tab:(ChaTab*)tab requestsBackgroundTabWithURL:(NSString*)url;
+// The tab's window was made active by the page's side, not by cha: Chromium
+// asks for its tab to come forward (a floating window's "Back to tab").
+- (void)tabWantsToBeShown:(ChaTab*)tab NS_SWIFT_NAME(tabWantsToBeShown(_:));
 // Find in page: |count| matches, the |active|-th selected (1-based).
 - (void)tab:(ChaTab*)tab didFindCount:(int)count active:(int)active final:(BOOL)final;
 @end

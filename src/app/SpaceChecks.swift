@@ -378,6 +378,33 @@ enum SpaceChecks {
             c.activeSpaceID == secret.id && c.spaces.filter(\.isSecret).count == 1)
     }
 
+    // A floating call window's "Back to tab": Chromium makes the call tab's
+    // window active, and cha switches to it, from another space too.
+    static func checkBackToTab(_ c: BrowserController) {
+        let home = c.activeSpaceID
+        c.newTab(url: page("Call"))
+        guard let call = c.activeTabID else { return check("call tab opened", false) }
+        c.addSpace()
+        c.sidebarPage = .tabs
+        let other = c.activeSpaceID
+        c.newTab(url: page("Elsewhere"))
+        sequence([
+            // Headless, the window cannot become key (cha is not the active
+            // app), so what follows the activation is called directly.
+            (1.5, {
+                guard let tab = c.liveTabs[call] else { return check("call tab is live", false) }
+                c.bringForward(tab)
+            }),
+            (0.6, {
+                check("Back to tab switches to the call, in its space",
+                    c.activeSpaceID == home && c.activeSpace.activeTabID == call,
+                    "\(c.activeSpaceID == home) \(c.activeSpace.activeTabID == call)")
+                c.deleteSpace(other, confirm: false)
+                c.closeTab(call)
+            }),
+        ])
+    }
+
     // ⌘T finds pages visited before, closed tabs or not.
     static func checkHistory(_ c: BrowserController) {
         c.history.clear()
@@ -764,7 +791,8 @@ enum SpaceChecks {
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
             (0.4, { checkOrphanPages(c) }),
-            (0.6, { checkHistory(c) }),
+            (0.6, { checkBackToTab(c) }),
+            (2.8, { checkHistory(c) }),
             (0.6, { checkSecretSpace(c) }),
             (1.0, { checkSecretSpaceEnd(c) }),
             (0.8, {
