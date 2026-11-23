@@ -27,6 +27,11 @@ if [ "$mode" = window ]; then
   if [ -n "${CHA_SCREEN:-}" ] && ! swift -e 'import AppKit; exit(NSScreen.screens.count > '"$CHA_SCREEN"' ? 0 : 1)' 2>/dev/null; then
     echo "display $CHA_SCREEN is not connected: windowed run skipped"; exit 75
   fi
+  # A locked screen draws no windows and gives them no pointer: every
+  # windowed check would fail for that alone (seen 2026-11-24, 02:40).
+  if swift -e 'import CoreGraphics; exit((CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Int == 1 ? 0 : 1)' 2>/dev/null; then
+    echo "screen locked: windowed run skipped"; exit 75
+  fi
   if [ "$real_input" = 1 ] || ~/.local/bin/mac-idle >/dev/null 2>&1; then
     real_input=1  # nobody at the Mac: hover and drags may move the real cursor
   elif [ -z "${CHA_SCREEN:-}" ]; then

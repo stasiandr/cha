@@ -124,37 +124,52 @@ follows `isDirectionInvertedFromDevice`.
 ## Beyond spaces (2026-11-24, branch arc-parity)
 
 Each line names its check: a scenario of `scripts/check.sh` (`CHA_TEST=…`)
-or the `spaces` checks. All pass headless; the `spaces` ones also in a real
-window (`check.sh window`, Mac idle), apart from the sidebar-slide timing
-checks, which fail the same way on main while the screen is locked.
+or the `spaces` checks. All pass headless. The windowed run
+(`check.sh window`) could not be done: the screen was locked all night, and
+a locked screen draws no windows and gives them no pointer, so every
+windowed check fails there, on main as on this branch. `check.sh window`
+now says so and skips (exit 75) instead of reporting those failures.
 
 - Command bar commands: typing "copy", "new space", "zoom"… runs Copy URL,
   Copy URL as Markdown, Duplicate, Pin, Favorite, Close, Reopen, Clear,
   Reload, Find, Zoom In/Out/Actual Size, Print, Developer Tools, View
   Source, Picture in Picture, Toggle Sidebar, New Space, Edit Space, New
-  Folder, Little Window, Downloads, Split View, Boost, New Note, Capture,
-  Route Links; archived tabs are found too. (spaces)
-- Arc's keys: ⌘= ⌘- ⌘0, ⌘P, ⌥⌘I, ⌥⌘U, ⌥⇧⌘C, ⌃⇧= / ⌃⇧-, ⌃⌘N, ⇧⌘2. (spaces)
+  Folder, Little Window, Downloads, Split View, Boost, New Note, New Easel,
+  Capture, Route Links, Extensions, Ask/Summarize, Tidy Titles; archived
+  tabs are found too. (spaces)
+- Arc's keys: ⌘= ⌘- ⌘0, ⌘P, ⌥⌘I, ⌥⌘U, ⌥⇧⌘C, ⌃⇧= / ⌃⇧-, ⌃⌘N, ⇧⌘2, ⇧⌘F.
 - ⌃Tab / ⌃⇧Tab through recently used tabs, ⌘Tab-style. (spaces, real key
   events)
 - A speaker on tabs that play sound (click mutes), and a mini player in the
-  sidebar for a tab left playing: play/pause, back/forward (the page's
-  Media Session handlers), mute, back to the tab. (sound)
-- Split View: two tabs side by side, follow the window, survive a restart.
-  (split)
-- Boosts: per-site CSS, script and Zap, live in every tab of the site,
-  kept in boosts.json. (boost)
-- Air Traffic Control: links from other apps routed to a space by rule,
-  the rest to a little window. (openurl)
-- Notes: ⌃⌘N, rich text, kept as typed in Notes/. (notes)
+  sidebar for a tab left playing. (sound)
+- Split View. (split)
+- Boosts: per-site CSS, script and Zap. (boost)
+- Air Traffic Control: links from other apps routed to a space by rule.
+  (openurl)
+- Notes (⌃⌘N) and Easels (canvas: pen, text, boxes, pasted pictures).
+  (notes, easel)
 - Capture: ⇧⌘2, a dragged part of the page or all of it, to the clipboard.
   (capture)
+- Chrome extensions from the Chrome Web Store: installed by link or ID,
+  keep their store ID, loaded at launch, popups and options open from the
+  Extensions window. (extensions; by hand: uBlock Origin Lite blocks ads,
+  its popup opens. Dark Reader installs and its popup opens, but it did not
+  restyle a page in that run: extensions that need a toolbar button click
+  or Chrome's tab strip may not fully work.) Only the default profile's
+  spaces get them.
+- Arc Max on Apple's on-device model: Ask This Page / Summarize (⇧⌘F) and
+  Tidy Tab Titles; nothing leaves the Mac, no key. (ask)
 - The hidden sidebar peeks out at the left edge. (spaces)
-- Close Tabs Below / Close Other Tabs, a "Copied" toast, and each space's
-  own archive time (12 h, 24 h, 7 d, 30 d, never). (spaces)
+- Close Tabs Below / Close Other Tabs, a "Copied" toast, each space's own
+  archive time (12 h, 24 h, 7 d, 30 d, never). (spaces)
 
 Done earlier: profiles per space, Little Arc, Peek, picture in picture,
 the meeting card, the secret space, per-space history.
 
-Not done: Chrome extensions, Easels (free-form canvases; notes cover the
-writing part), Arc Max (AI), syncing between Macs and the phone app.
+Not done:
+- Sync between devices (Arc Sync). It would go through cloudsync
+  (sync.stasiandr.com), but needs a sync identity created on that server,
+  its recovery phrase kept by the user, and a second Mac with cha to sync
+  with; none of that should be set up without the user.
+- An extensions toolbar (action buttons on pages): popups open from the
+  Extensions window instead.
