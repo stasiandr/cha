@@ -37,7 +37,12 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var toastSymbol = "checkmark.circle.fill"
     var toastPanel: NSPanel?
     var captureOverlay: NSPanel?
-    var extensionsPanel: NSPanel?  // Capture's drag-over-the-page layer.
+    var extensionsPanel: NSPanel?
+    // Arc Max on the Mac's own model (ArcMax.swift).
+    var askPanel: NSPanel?
+    @Published var askAnswer = ""
+    @Published var askBusy = false
+    var pageTextRequests: [String: (String) -> Void] = [:]  // Capture's drag-over-the-page layer.
     @Published var zapping = false
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true

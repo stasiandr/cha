@@ -158,6 +158,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/bo
   echo "boost FAILED"; failed=$((failed + 1))
 fi
 
+step "Arc Max on the Mac's own model: ask the page, tidy titles"
+run_scenario ask 90; code=$?
+grep -E 'CHECK |SKIP' build/check/ask.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ask.log; then
+  echo "ask FAILED"; failed=$((failed + 1))
+fi
+
 step "Easels: drawn, written, framed, kept"
 run_scenario easel 30; code=$?
 grep -E 'CHECK ' build/check/easel.log | sed 's/^.*cha\[[^]]*\] //'

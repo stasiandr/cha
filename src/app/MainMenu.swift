@@ -85,6 +85,7 @@ enum MainMenu {
             keyEquivalent: "a")
         edit.addItem(.separator())
         edit.add("Find…", "f", target, #selector(MenuTarget.findInPage))
+        edit.add("Ask This Page…", "f", target, #selector(MenuTarget.askPage), [.command, .shift])
         edit.add("Find Next", "g", target, #selector(MenuTarget.findNext))
         edit.add("Find Previous", "g", target, #selector(MenuTarget.findPrevious), [.command, .shift])
         bar.addItem(submenu: edit, title: "Edit")
@@ -134,6 +135,7 @@ enum MainMenu {
         tabs.add(
             "Back to Pinned Address", "", target, #selector(MenuTarget.resetPinned), [])
         tabs.addItem(.separator())
+        tabs.add("Tidy Tab Titles", "", target, #selector(MenuTarget.tidyTitles), [])
         tabs.add("Split View", "=", target, #selector(MenuTarget.splitView), [.control, .shift])
         tabs.add("Close Split View", "-", target, #selector(MenuTarget.closeSplitView), [.control, .shift])
         tabs.addItem(.separator())
@@ -289,6 +291,8 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func newNote() { controller?.newNote() }
     @objc func capture() { controller?.startCapture() }
     @objc func newEasel() { controller?.newEasel() }
+    @objc func askPage() { controller?.openAsk() }
+    @objc func tidyTitles() { controller?.tidyTabTitles() }
     @objc func extensions() { controller?.openExtensions() }
     @objc func closeSplitView() { controller?.closeSplit() }
     @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }

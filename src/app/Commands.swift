@@ -54,6 +54,9 @@ struct ChaCommand: Equatable {
         .init(id: "extensions", title: "Extensions", symbol: "puzzlepiece.extension", keys: "", words: ["add-ons", "plugins", "web store"]),
         .init(id: "install-extension", title: "Install This Extension", symbol: "plus.app", keys: "", words: ["add to cha", "add to chrome", "web store"]),
         .init(id: "new-easel", title: "New Easel", symbol: "scribble.variable", keys: "", words: ["canvas", "draw", "board", "whiteboard"]),
+        .init(id: "ask", title: "Ask This Page", symbol: "sparkles", keys: "⇧⌘F", words: ["ai", "question", "arc max", "chat"]),
+        .init(id: "summarize", title: "Summarize This Page", symbol: "text.append", keys: "", words: ["ai", "tldr", "summary", "arc max"]),
+        .init(id: "tidy", title: "Tidy Tab Titles", symbol: "wand.and.stars", keys: "", words: ["ai", "rename tabs", "arc max"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
     ]
 
@@ -102,6 +105,9 @@ extension BrowserController {
         case "new-folder": _ = addFolder()
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
+        case "ask": openAsk()
+        case "summarize": openAsk(summarize: true)
+        case "tidy": tidyTabTitles()
         case "new-easel": newEasel()
         case "extensions": openExtensions()
         case "install-extension": installExtensionFromPage()

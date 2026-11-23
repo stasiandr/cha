@@ -222,6 +222,8 @@ extension BrowserController {
             saveNote(message)
         } else if message.hasPrefix("easel ") {
             saveEasel(message)
+        } else if message.hasPrefix("text ") {
+            receivePageText(message)
         } else if message.hasPrefix("zap "), let site = BoostStore.site(tab.currentURL) {
             let selector = String(message.dropFirst(4))
             var boost = BoostStore.shared.boosts[site] ?? Boost(host: site)

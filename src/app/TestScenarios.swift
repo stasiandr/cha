@@ -964,6 +964,34 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "ask":
+            // Arc Max on this Mac's model: a question about the page, and
+            // tidy tab titles. Skipped (not passed) where the model is missing.
+            guard PageAI.available else {
+                NSLog("SKIP Apple's on-device model is not available: %@", PageAI.unavailableReason)
+                at(1) { NSLog("CHECKS passed=0 failed=0"); NSApp.terminate(nil) }
+                break
+            }
+            let page = "data:text/html,<title>Amazon.com : Wireless Noise Cancelling Headphones Model X200, Black : Electronics</title>"
+                + "<p>The Eiffel Tower in Paris was finished in 1889. It is 330 metres tall and was built by Gustave Eiffel's company.</p>"
+            at(1) { controller.newTab(url: page) }
+            at(3) {
+                controller.run(ChaCommand.all.first { $0.id == "ask" }!)
+                SpaceChecks.check("Ask opens over the page", controller.askPanel?.isVisible == true)
+                controller.ask("How tall is the Eiffel Tower?") {
+                    SpaceChecks.check("the answer comes from the page", controller.askAnswer.contains("330"), controller.askAnswer)
+                    NSLog("ASK answer: %@", controller.askAnswer)
+                    controller.closeAsk()
+                    controller.tidyTabTitles {
+                        let title = controller.activeTab.flatMap { _ in controller.tabData(controller.activeTabID!)?.displayTitle } ?? "-"
+                        SpaceChecks.check("Tidy gives the tab a short name", title.count <= 40 && !title.contains("Amazon") && !title.isEmpty, title)
+                        NSLog("ASK tidy: %@", title)
+                        NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                        NSApp.terminate(nil)
+                    }
+                }
+            }
+
         case "easel":
             // Easels: drawn, written, framed, pictures; kept; back on reopening.
             var easelID: UUID?
