@@ -46,6 +46,7 @@ enum MainMenu {
             [.command, .shift])
         file.add("Empty Tab", "", target, #selector(MenuTarget.emptyTab), [])
         file.add("New Note", "n", target, #selector(MenuTarget.newNote), [.command, .control])
+        file.add("Capture", "2", target, #selector(MenuTarget.capture), [.command, .shift])
         file.addItem(.separator())
         file.add("Print…", "p", target, #selector(MenuTarget.printPage))
         file.addItem(.separator())
@@ -281,6 +282,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func boostSite() { controller?.openBoostEditor() }
     @objc func routing() { controller?.openRoutingRules() }
     @objc func newNote() { controller?.newNote() }
+    @objc func capture() { controller?.startCapture() }
     @objc func closeSplitView() { controller?.closeSplit() }
     @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }
     @objc func zoomOut() { controller?.chromeCommand(ChaCommand.Chrome.zoomOut) }

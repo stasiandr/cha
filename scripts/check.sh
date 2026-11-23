@@ -165,6 +165,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/no
   echo "notes FAILED"; failed=$((failed + 1))
 fi
 
+step "Capture: part of the page, or all of it, to the clipboard"
+run_scenario capture 30; code=$?
+grep -E 'CHECK ' build/check/capture.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/capture.log; then
+  echo "capture FAILED"; failed=$((failed + 1))
+fi
+
 step "Split View: two tabs side by side"
 run_scenario split 30; code=$?
 grep -E 'CHECK ' build/check/split.log | sed 's/^.*cha\[[^]]*\] //'

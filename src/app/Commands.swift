@@ -50,6 +50,7 @@ struct ChaCommand: Equatable {
         .init(id: "boost", title: "Boost This Site", symbol: "paintbrush", keys: "", words: ["css", "style", "customize", "zap"]),
         .init(id: "routing", title: "Route Links to Spaces…", symbol: "arrow.triangle.branch", keys: "", words: ["air traffic control", "rules", "links from apps"]),
         .init(id: "new-note", title: "New Note", symbol: "note.text", keys: "⌃⌘N", words: ["easel", "write", "notes"]),
+        .init(id: "capture", title: "Capture", symbol: "camera.viewfinder", keys: "⇧⌘2", words: ["screenshot", "picture"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
     ]
 
@@ -98,6 +99,7 @@ extension BrowserController {
         case "new-folder": _ = addFolder()
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
+        case "capture": startCapture()
         case "new-note": newNote()
         case "routing": openRoutingRules()
         case "boost": openBoostEditor()

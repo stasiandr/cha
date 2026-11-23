@@ -36,6 +36,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var toastText: String?
     var toastSymbol = "checkmark.circle.fill"
     var toastPanel: NSPanel?
+    var captureOverlay: NSPanel?  // Capture's drag-over-the-page layer.
     @Published var zapping = false
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true

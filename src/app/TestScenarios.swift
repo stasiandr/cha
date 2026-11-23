@@ -997,6 +997,48 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "capture":
+            // Capture: part of the page, or all of it, to the clipboard.
+            let halves = "data:text/html,<style>body{margin:0;display:flex;height:100vh}div{flex:1}</style>"
+                + "<div style='background:rgb(255,0,0)'></div><div style='background:rgb(0,0,255)'></div>"
+            func color(_ image: NSImage?, _ x: CGFloat, _ y: CGFloat) -> NSColor? {
+                guard let rep = image?.representations.first as? NSBitmapImageRep else { return nil }
+                return rep.colorAt(x: Int(x * CGFloat(rep.pixelsWide)), y: Int(y * CGFloat(rep.pixelsHigh)))?.usingColorSpace(.sRGB)
+            }
+            // Colour-managed: pure red comes back as a strong red, not 1/0/0.
+            func isRed(_ c: NSColor?) -> Bool { guard let c else { return false }; return c.redComponent > c.blueComponent + 0.4 && c.redComponent > c.greenComponent + 0.4 }
+            func isBlue(_ c: NSColor?) -> Bool { guard let c else { return false }; return c.blueComponent > c.redComponent + 0.4 }
+            at(1) { controller.newTab(url: halves) }
+            at(3) {
+                controller.run(ChaCommand.all.first { $0.id == "capture" }!)
+                SpaceChecks.check("Capture covers the page to drag over", controller.captureOverlay?.isVisible == true
+                    && (controller.captureOverlay?.frame.isClose(to: controller.contentScreenRect) ?? false))
+                controller.captureOverlay?.cancelOperation(nil)
+                SpaceChecks.check("Esc lets it be", controller.captureOverlay == nil)
+                var left = controller.contentScreenRect
+                left.size.width = left.width / 2 - 20
+                controller.capture(left) { image in
+                    SpaceChecks.check("a dragged part becomes a picture of just that",
+                        isRed(color(image, 0.5, 0.5)) && isRed(color(image, 0.95, 0.5)), "\(String(describing: color(image, 0.5, 0.5)))")
+                    SpaceChecks.check("and is on the clipboard (the checks' own)",
+                        BrowserController.clipboard.data(forType: .png) != nil && controller.toastText == "Copied screenshot")
+                }
+            }
+            at(4.5) {
+                controller.capture(.zero) { image in
+                    let page = controller.contentScreenRect
+                    SpaceChecks.check("a click takes the whole page",
+                        isRed(color(image, 0.1, 0.5)) && isBlue(color(image, 0.9, 0.5))
+                            && abs((image?.size.width ?? 0) - page.width) < 2,
+                        "\(image?.size ?? .zero) vs \(page.size), \(String(describing: color(image, 0.1, 0.5))) \(String(describing: color(image, 0.9, 0.5)))")
+                }
+            }
+            at(6) {
+                BrowserController.clipboard.clearContents()
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "sound":
             // A tab playing sound: its speaker, mute, and the mini player once
             // it is left. (The checks run with Chromium's sound off.)

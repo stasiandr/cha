@@ -7,6 +7,7 @@
 #include <string>
 
 #include "include/cef_browser.h"
+#include "include/cef_devtools_message_observer.h"
 #include "include/cef_client.h"
 #include "include/cef_command_handler.h"
 #include "include/cef_command_ids.h"
@@ -48,6 +49,39 @@
 @end
 
 namespace {
+
+// One Page.captureScreenshot: its answer, then the observer goes.
+class CaptureObserver : public CefDevToolsMessageObserver {
+ public:
+  explicit CaptureObserver(void (^done)(NSData*)) : done_(done) {}
+  void OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int message_id, bool success,
+                              const void* result, size_t size) override {
+    if (message_id != id || !done_) {
+      return;
+    }
+    NSData* png = nil;
+    if (success) {
+      NSData* json = [NSData dataWithBytes:result length:size];
+      NSDictionary* body = [NSJSONSerialization JSONObjectWithData:json options:0 error:nil];
+      NSString* data = [body isKindOfClass:NSDictionary.class] ? body[@"data"] : nil;
+      if ([data isKindOfClass:NSString.class]) {
+        png = [[NSData alloc] initWithBase64EncodedString:data options:0];
+      }
+    }
+    auto done = done_;
+    done_ = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      done(png);
+    });
+    registration = nullptr;  // Ends this observer.
+  }
+  int id = 0;
+  CefRefPtr<CefRegistration> registration;
+
+ private:
+  void (^done_)(NSData*);
+  IMPLEMENT_REFCOUNTING(CaptureObserver);
+};
 
 NSString* ToNSString(const CefString& value) {
   return [NSString stringWithUTF8String:value.ToString().c_str()];
@@ -939,6 +973,24 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   self.mediaTitle = title;
   self.mediaArtist = artist;
   [self cefChanged];
+}
+
+- (void)captureVisiblePage:(void (^)(NSData* _Nullable))completion {
+  auto browser = _host ? _host->browser() : nullptr;
+  if (!browser) {
+    completion(nil);
+    return;
+  }
+  auto host = browser->GetHost();
+  CefRefPtr<CaptureObserver> observer = new CaptureObserver(completion);
+  observer->registration = host->AddDevToolsMessageObserver(observer);
+  CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+  params->SetString("format", "png");
+  observer->id = host->ExecuteDevToolsMethod(0, "Page.captureScreenshot", params);
+  if (observer->id == 0) {
+    observer->registration = nullptr;
+    completion(nil);
+  }
 }
 
 - (void)sendMediaCommand:(NSString*)command {

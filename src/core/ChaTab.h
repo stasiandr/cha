@@ -72,6 +72,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly, copy) NSString* mediaTitle;
 @property(nonatomic, readonly, copy) NSString* mediaArtist;
 @property(nonatomic) BOOL audioMuted;
+// A picture of what the page shows now (PNG), or nil.
+- (void)captureVisiblePage:(void (^)(NSData* _Nullable png))completion;
 // The mini player's buttons: "toggle" (play/pause), "nexttrack",
 // "previoustrack", in every frame of the page.
 - (void)sendMediaCommand:(NSString*)command;
