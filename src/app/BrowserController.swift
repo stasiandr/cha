@@ -38,6 +38,11 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var toastPanel: NSPanel?
     var captureOverlay: NSPanel?
     var extensionsPanel: NSPanel?
+    var lastExtensionPopup: String?
+    var syncPanel: NSPanel?
+    #if CHA_SYNC
+    var sync: ChaSync?
+    #endif
     // Arc Max on the Mac's own model (ArcMax.swift).
     var askPanel: NSPanel?
     @Published var askAnswer = ""
@@ -243,6 +248,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         applySpaceTint()
         installSwipeMonitor()
         installRecentTabsMonitor()
+        #if CHA_SYNC
+        sync = ChaSync(controller: self)
+        #endif
         installReopen()
         window.acceptsMouseMovedEvents = true
         // Spaces' own profiles get ready while the first page loads.
@@ -1482,6 +1490,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     func save() {
+        #if CHA_SYNC
+        sync?.schedulePush()
+        #endif
         Persistence.save(
             BrowserState(
                 spaces: spaces, activeSpaceID: activeSpaceID,

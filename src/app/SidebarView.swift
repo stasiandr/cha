@@ -16,6 +16,8 @@ struct SidebarView: View {
                     .padding(.bottom, 1)
                 AddressPill(controller: controller)
                     .padding(.bottom, 6)
+                ExtensionsBar(controller: controller)
+                    .padding(.bottom, 4)
                 FavoritesGrid(controller: controller)
                 main
                 MiniPlayer(controller: controller)

@@ -194,14 +194,15 @@ fi
 step "Chrome extensions: installed from a CRX, running after a restart"
 site="build/check/ext-site"; rm -rf "$site"; mkdir -p "$site/src"
 echo '<title>ext</title><p>page</p>' > "$site/index.html"
-printf '%s' '{"manifest_version": 3, "name": "cha probe", "version": "1.0", "content_scripts": [{"matches": ["<all_urls>"], "js": ["c.js"], "run_at": "document_start"}]}' > "$site/src/manifest.json"
+printf '%s' '{"manifest_version": 3, "name": "cha probe", "version": "1.0", "action": {"default_popup": "popup.html"}, "content_scripts": [{"matches": ["<all_urls>"], "js": ["c.js"], "run_at": "document_start"}]}' > "$site/src/manifest.json"
+echo '<title>probe popup</title><p>popup</p>' > "$site/src/popup.html"
 echo "document.documentElement.dataset.ext = 'yes';" > "$site/src/c.js"
 python3 - "$site" <<'PY'
 import io, struct, sys, zipfile, os
 site = sys.argv[1]
 buf = io.BytesIO()
 with zipfile.ZipFile(buf, "w") as z:
-    for name in ("manifest.json", "c.js"):
+    for name in ("manifest.json", "c.js", "popup.html"):
         z.write(os.path.join(site, "src", name), name)
 header = b""
 open(os.path.join(site, "abcdefghijklmnopabcdefghijklmnop.crx"), "wb").write(b"Cr24" + struct.pack("<II", 3, len(header)) + header + buf.getvalue())
@@ -220,6 +221,33 @@ grep -hE 'CHECK ' build/check/extensions-1.log build/check/extensions-2.log | se
 if [ "$code" -ne 0 ] || [ "$code2" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/extensions-1.log \
   || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/extensions-2.log; then
   echo "extensions FAILED"; failed=$((failed + 1))
+fi
+
+step "Sync: two Macs (two profiles) through a local cloudsync server"
+server_bin="$HOME/personal/cloudsync/target/release/cloudsync-server"
+if [ ! -x "$server_bin" ]; then
+  echo "skipped: no $server_bin (cargo build -p cloudsync-server --release in ~/personal/cloudsync)"
+else
+  sync_data="$PWD/build/check/sync-server"; rm -rf "$sync_data"; mkdir -p "$sync_data"
+  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  CLOUDSYNC_DATA="$sync_data" CLOUDSYNC_ADDR="127.0.0.1:$port" "$server_bin" >build/check/sync-server.log 2>&1 &
+  server=$!
+  sleep 1
+  a_profile="$PWD/build/check/profile-sync-a"; b_profile="$PWD/build/check/profile-sync-b"
+  rm -rf "$a_profile" "$b_profile"
+  code_file="$PWD/build/check/sync-code"; rm -f "$code_file"
+  sync_ok=1
+  for step_role in b1:b a:a b2:b a2:a; do
+    role="${step_role%%:*}"; who="${step_role##*:}"
+    profile=$([ "$who" = a ] && echo "$a_profile" || echo "$b_profile")
+    CHA_SYNC_URL="http://127.0.0.1:$port" CHA_SYNC_ROLE="$role" CHA_SYNC_CODE_FILE="$code_file" \
+      CHA_HEADLESS=1 CHA_TEST=sync CHA_PROFILE="$profile" CHA_DOWNLOADS="$profile/Downloads" \
+      timeout 40 build/cha.app/Contents/MacOS/cha >"build/check/sync-$role.log" 2>&1 || sync_ok=0
+    grep -E 'CHECK |SKIP' "build/check/sync-$role.log" | sed 's/^.*cha\[[^]]*\] //'
+    grep -q 'CHECKS passed=[0-9]* failed=0' "build/check/sync-$role.log" || sync_ok=0
+  done
+  kill "$server" 2>/dev/null
+  if [ "$sync_ok" != 1 ]; then echo "sync FAILED"; failed=$((failed + 1)); fi
 fi
 
 step "Split View: two tabs side by side"

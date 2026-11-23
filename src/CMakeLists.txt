@@ -17,10 +17,30 @@ set(EXECUTABLE_NAME "${CEF_TARGET}")
 set(PRODUCT_NAME "${CEF_TARGET}")
 
 file(GLOB CHA_SWIFT_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/app/*.swift")
+
+# Sync between Macs goes through cloudsync (~/personal/cloudsync): its Swift
+# bindings and the Rust core as a static library. Without them cha builds
+# with Sync off (CHA_SYNC undefined).
+set(CHA_CLOUDSYNC "$ENV{HOME}/personal/cloudsync/bindings/swift/CloudSync" CACHE PATH "cloudsync's SwiftPM package")
+set(CHA_CLOUDSYNC_LIB "${CHA_CLOUDSYNC}/CloudSyncFFI.xcframework/macos-arm64")
+if(EXISTS "${CHA_CLOUDSYNC_LIB}/libcloudsync_ffi.a")
+  list(APPEND CHA_SWIFT_SRCS "${CHA_CLOUDSYNC}/Sources/CloudSync/CloudSync.swift")
+  set(CHA_SYNC ON)
+  message(STATUS "cha: Sync on, with ${CHA_CLOUDSYNC}")
+else()
+  message(STATUS "cha: Sync off (no ${CHA_CLOUDSYNC_LIB}/libcloudsync_ffi.a)")
+endif()
+
 add_executable(${CEF_TARGET} MACOSX_BUNDLE ${CHA_SWIFT_SRCS})
 target_compile_options(${CEF_TARGET} PRIVATE
   "SHELL:-import-objc-header ${CMAKE_CURRENT_SOURCE_DIR}/core/ChaCore.h")
 target_link_libraries(${CEF_TARGET} chacore)
+if(CHA_SYNC)
+  target_compile_options(${CEF_TARGET} PRIVATE
+    "SHELL:-D CHA_SYNC" "SHELL:-I ${CHA_CLOUDSYNC_LIB}/Headers/CloudSyncFFI")
+  target_link_libraries(${CEF_TARGET} "${CHA_CLOUDSYNC_LIB}/libcloudsync_ffi.a"
+    "-framework Security" "-framework SystemConfiguration")
+endif()
 set_target_properties(${CEF_TARGET} PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/mac/Info.plist.in)
 

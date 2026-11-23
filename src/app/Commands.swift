@@ -57,6 +57,7 @@ struct ChaCommand: Equatable {
         .init(id: "ask", title: "Ask This Page", symbol: "sparkles", keys: "⇧⌘F", words: ["ai", "question", "arc max", "chat"]),
         .init(id: "summarize", title: "Summarize This Page", symbol: "text.append", keys: "", words: ["ai", "tldr", "summary", "arc max"]),
         .init(id: "tidy", title: "Tidy Tab Titles", symbol: "wand.and.stars", keys: "", words: ["ai", "rename tabs", "arc max"]),
+        .init(id: "sync", title: "Sync…", symbol: "arrow.triangle.2.circlepath", keys: "", words: ["other mac", "devices", "arc sync"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
     ]
 
@@ -105,6 +106,7 @@ extension BrowserController {
         case "new-folder": _ = addFolder()
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
+        case "sync": openSync()
         case "ask": openAsk()
         case "summarize": openAsk(summarize: true)
         case "tidy": tidyTabTitles()

@@ -332,3 +332,84 @@ struct ExtensionsWindow: View {
         store.install(input) { ok in if ok { input = "" } }
     }
 }
+
+// The extensions' buttons in the sidebar, under the address, as Arc puts
+// them: a click opens the extension's popup in a little window by the
+// sidebar; the menu has its options and Remove. Only those with a popup.
+extension ExtensionStore {
+    /// The extension's toolbar icon: action.default_icon, else its icons.
+    func icon(of ext: InstalledExtension) -> NSImage? {
+        guard let data = try? Data(contentsOf: ext.path.appendingPathComponent("manifest.json")),
+            let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        let action = (manifest["action"] ?? manifest["browser_action"]) as? [String: Any]
+        var candidates: [String] = []
+        for source in [action?["default_icon"], manifest["icons"]] {
+            if let path = source as? String { candidates.append(path) }
+            if let sizes = source as? [String: String] {
+                candidates += sizes.sorted { (Int($0.key) ?? 0) > (Int($1.key) ?? 0) }.map(\.value)
+            }
+        }
+        for path in candidates {
+            let file = ext.path.appendingPathComponent(path.hasPrefix("/") ? String(path.dropFirst()) : path)
+            if let image = NSImage(contentsOf: file) { return image }
+        }
+        return nil
+    }
+}
+
+struct ExtensionsBar: View {
+    @ObservedObject var controller: BrowserController
+    @ObservedObject var store = ExtensionStore.shared
+
+    var body: some View {
+        let withPopup = store.installed.filter { store.pages(of: $0).popup != nil }
+        if !withPopup.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(withPopup) { ext in
+                    Button {
+                        controller.openExtensionPopup(ext)
+                    } label: {
+                        Group {
+                            if let icon = store.icon(of: ext) {
+                                Image(nsImage: icon).resizable().interpolation(.high)
+                            } else {
+                                Image(systemName: "puzzlepiece.extension")
+                            }
+                        }
+                        .frame(width: 16, height: 16)
+                        .padding(5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(ext.name)
+                    .uiFrame("extension:\(ext.id)")
+                    .contextMenu {
+                        if let options = store.pages(of: ext).options {
+                            Button("Options") { controller.newTab(url: options) }
+                        }
+                        Button("Manage Extensions…") { controller.openExtensions() }
+                        Button("Remove \(ext.name)") { store.remove(ext) }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+}
+
+extension BrowserController {
+    /// The popup of an extension, in a little window by the sidebar; the
+    /// page in front is the tab it acts on.
+    func openExtensionPopup(_ ext: InstalledExtension) {
+        guard let popup = ExtensionStore.shared.pages(of: ext).popup else { return }
+        var near: NSRect?
+        if let frame = UIFrames.frames["extension:\(ext.id)"], let window {
+            near = NSRect(x: window.frame.minX + frame.minX, y: window.frame.maxY - frame.maxY - 420,
+                          width: 420, height: 420)
+        }
+        openLittleWindow(popup, over: near)
+        lastExtensionPopup = popup
+    }
+}

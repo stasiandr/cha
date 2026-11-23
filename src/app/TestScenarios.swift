@@ -1125,6 +1125,79 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "sync":
+            // Two Macs (two profiles, run in turn) through a local cloudsync
+            // server: CHA_SYNC_ROLE is b1 (B shows its code), a (A starts and
+            // adds B), b2 (B joins, has A's space, renames it), a2 (A sees it).
+            #if CHA_SYNC
+            let role = ProcessInfo.processInfo.environment["CHA_SYNC_ROLE"] ?? ""
+            let codeFile = ProcessInfo.processInfo.environment["CHA_SYNC_CODE_FILE"] ?? "/dev/null"
+            let state = SyncState.shared
+            func done() { NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed); NSApp.terminate(nil) }
+            func synced() -> SpaceData? { controller.spaces.first { $0.name.hasPrefix("Synced Work") } }
+            switch role {
+            case "b1":
+                at(1) {
+                    controller.sync?.waitToJoin()
+                    SpaceChecks.check("a Mac to be added shows its code", state.deviceCode.hasPrefix("cs1:") && state.waitingToJoin, state.deviceCode)
+                    try? state.deviceCode.write(toFile: codeFile, atomically: true, encoding: .utf8)
+                    done()
+                }
+            case "a":
+                at(1) {
+                    controller.addSpace()
+                    controller.finishEditing()
+                    let id = controller.activeSpaceID
+                    controller.updateSpace(id) { $0.name = "Synced Work"; $0.symbol = "briefcase" }
+                    controller.newTab(url: "https://example.com/pinned")
+                    if let tab = controller.activeTabID { controller.togglePin(tab) }
+                    _ = controller.addFolder(name: "Docs")
+                    controller.newTab(url: "https://example.com/today")  // stays on this Mac
+                    controller.newTab(url: "https://example.com/fav")
+                    if let tab = controller.activeTabID { controller.addToFavorites(tab) }
+                    controller.sync?.startNew()
+                }
+                at(4) {
+                    SpaceChecks.check("Sync starts", state.on, state.status)
+                    controller.save()
+                }
+                at(7) {
+                    let code = (try? String(contentsOfFile: codeFile, encoding: .utf8)) ?? ""
+                    Task { @MainActor in
+                        let result = await controller.sync?.addMac(code: code) ?? "-"
+                        SpaceChecks.check("the other Mac is added by its code", result.hasPrefix("Added"), result)
+                        done()
+                    }
+                }
+            case "b2":
+                at(1) { controller.sync?.waitToJoin() }
+                at(8) {
+                    let space = synced()
+                    SpaceChecks.check("B joins on its own", state.on && state.members == 2, state.status)
+                    SpaceChecks.check("and has A's space with its pinned tab and folder",
+                        space?.pinnedTabs.contains { $0.url == "https://example.com/pinned" } == true
+                            && space?.folders.contains { $0.name == "Docs" } == true && space?.symbol == "briefcase",
+                        "\(controller.spaces.map(\.name))")
+                    SpaceChecks.check("but not A's today tabs", space?.tabs.contains { $0.url.hasSuffix("/today") } == false)
+                    SpaceChecks.check("and A's favourite", controller.favorites.contains { $0.url == "https://example.com/fav" || $0.pinnedURL == "https://example.com/fav" })
+                    if let id = space?.id { controller.updateSpace(id) { $0.name = "Synced Work, renamed on B" } }
+                    controller.save()
+                }
+                at(12) { done() }
+            case "a2":
+                at(8) {
+                    SpaceChecks.check("B's rename reaches A", synced()?.name == "Synced Work, renamed on B", "\(controller.spaces.map(\.name))")
+                    SpaceChecks.check("the server raised no warnings", state.warnings.isEmpty, "\(state.warnings)")
+                    SpaceChecks.check("A counts two Macs", state.members == 2, "\(state.members)")
+                    done()
+                }
+            default:
+                at(1) { NSLog("no CHA_SYNC_ROLE"); done() }
+            }
+            #else
+            at(1) { NSLog("SKIP built without cloudsync"); NSLog("CHECKS passed=0 failed=0"); NSApp.terminate(nil) }
+            #endif
+
         case "extensions":
             // Chrome extensions: installed from a CRX (a local stand-in for the
             // Web Store), loaded after a restart (the step runs this twice).
@@ -1152,6 +1225,11 @@ enum TestScenarios {
                 at(5) {
                     SpaceChecks.check("after a restart the extension runs on pages", controller.activeTab?.title == "EXT yes",
                                       controller.activeTab?.title ?? "-")
+                    SpaceChecks.check("its button is in the sidebar", UIFrames.frames["extension:\(id)"] != nil)
+                    if let ext = ExtensionStore.shared.installed.first { controller.openExtensionPopup(ext) }
+                    SpaceChecks.check("a click opens its popup in a little window",
+                        LittleWindowController.open.contains { $0.url.hasPrefix("chrome-extension://\(id)/popup.html") })
+                    LittleWindowController.open.forEach { $0.window.close() }
                     if let ext = ExtensionStore.shared.installed.first { ExtensionStore.shared.remove(ext) }
                     SpaceChecks.check("Remove takes it out", ExtensionStore.shared.installed.isEmpty && ExtensionStore.shared.needsRestart)
                     NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)

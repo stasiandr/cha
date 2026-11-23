@@ -28,6 +28,9 @@ enum MainMenu {
             title: "Extensions…", action: #selector(MenuTarget.extensions), keyEquivalent: "")
         extensions.target = target
         app.addItem(extensions)
+        let sync = NSMenuItem(title: "Sync…", action: #selector(MenuTarget.syncWindow), keyEquivalent: "")
+        sync.target = target
+        app.addItem(sync)
         app.addItem(.separator())
         app.addItem(
             withTitle: "Hide cha", action: #selector(NSApplication.hide(_:)),
@@ -294,6 +297,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func askPage() { controller?.openAsk() }
     @objc func tidyTitles() { controller?.tidyTabTitles() }
     @objc func extensions() { controller?.openExtensions() }
+    @objc func syncWindow() { controller?.openSync() }
     @objc func closeSplitView() { controller?.closeSplit() }
     @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }
     @objc func zoomOut() { controller?.chromeCommand(ChaCommand.Chrome.zoomOut) }
