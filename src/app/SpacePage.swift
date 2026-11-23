@@ -359,6 +359,11 @@ struct TabMenu: View {
         Button("Copy Link") { controller.copyLink(tab.id) }
         Button("Duplicate") { controller.duplicateTab(tab.id) }
         Divider()
+        if !tab.isPinned {
+            Button("Close Tabs Below") { controller.closeTabsBelow(tab.id) }
+                .disabled(controller.tabsBelow(tab.id).isEmpty)
+            Button("Close Other Tabs") { controller.closeOtherTabs(tab.id) }
+        }
         if tab.isPinned {
             Button("Unload") { controller.unload(tab.id) }
                 .disabled(!controller.isLoaded(tab.id))

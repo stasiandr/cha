@@ -447,6 +447,45 @@ enum SpaceChecks {
         ])
     }
 
+    // The tab menu's Close Tabs Below / Close Other Tabs, the Copied toast,
+    // and a space's own archive time.
+    static func checkTabActions(_ c: BrowserController) {
+        var ids: [UUID] = []
+        for name in ["Keep", "Mid", "Low"] {
+            c.newTab(url: page("Action " + name))
+            if let id = c.activeTabID { ids.append(id) }
+        }
+        // Newest on top: Low, Mid, Keep.
+        guard ids.count == 3 else { return check("action tabs", false) }
+        let (keep, mid, low) = (ids[0], ids[1], ids[2])
+        check("tabs below the top one", c.tabsBelow(low).prefix(2) == [mid, keep], "\(c.tabsBelow(low).count)")
+        c.closeTabsBelow(mid)
+        check("Close Tabs Below closes those under it only", c.tabData(keep) == nil && c.tabData(mid) != nil && c.tabData(low) != nil)
+        c.closeOtherTabs(mid)
+        check("Close Other Tabs leaves the one and the pinned ones",
+            c.tabData(low) == nil && c.tabData(mid) != nil && c.activeTabID == mid
+                && c.activeSpace.unpinnedTabs.count == 1 && !c.activeSpace.pinnedTabs.isEmpty)
+        c.copyLink()
+        check("copying shows Copied", c.toastText == "Copied URL" && c.toastPanel?.isVisible == true)
+        BrowserController.clipboard.clearContents()
+
+        // A space's own archive time: 0 never archives; 24 h keeps a 13 h old tab.
+        let spaceID = c.activeSpaceID
+        c.update(tabID: mid) { $0.lastActive = Date().addingTimeInterval(-13 * 3600) }
+        c.newTab(url: page("Fresh"))
+        c.updateSpace(spaceID) { $0.archiveAfterHours = 24 }
+        c.archiveStaleTabs()
+        check("a 24-hour space keeps a 13-hour-old tab", c.tabData(mid) != nil)
+        c.updateSpace(spaceID) { $0.archiveAfterHours = 0 }
+        c.update(tabID: mid) { $0.lastActive = Date().addingTimeInterval(-90 * 24 * 3600) }
+        c.archiveStaleTabs()
+        check("\"Never\" keeps even a 90-day-old one", c.tabData(mid) != nil)
+        c.updateSpace(spaceID) { $0.archiveAfterHours = nil }
+        c.archiveStaleTabs()
+        check("the default 12 hours archives it", c.tabData(mid) == nil && c.archive.contains { $0.title.contains("Action Mid") || $0.url.contains("Action%20Mid") || $0.url.contains("Action Mid") })
+        if let fresh = c.activeTabID { c.closeTab(fresh) }
+    }
+
     // ⌃Tab goes back through the tabs in the order they were used.
     static func checkRecentTabs(_ c: BrowserController) {
         var ids: [UUID] = []
@@ -955,6 +994,7 @@ enum SpaceChecks {
             (0.6, { checkCloseEverything(c) }),
             (0.2, { checkReopenClosed(c) }),
             (0.4, { checkOrphanPages(c) }),
+            (0.6, { checkTabActions(c) }),
             (0.6, { checkSidebarPeek(c) }),
             (0.8, { checkRecentTabs(c) }),
             (2.2, { checkCommands(c) }),

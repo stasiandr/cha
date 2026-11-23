@@ -72,6 +72,13 @@ struct SpaceData: Codable, Identifiable, Equatable {
     // The secret space: no icon in the bottom bar, not in swipes, ⌃1…⌃9,
     // the command bar or the archive; reached from a space icon's menu.
     var isSecret = false
+    // How long an unpinned tab may be left alone before it is archived, in
+    // hours (nil: 12, Arc's default; 0: never).
+    var archiveAfterHours: Int?
+
+    static let archiveChoices: [(hours: Int, name: String)] = [
+        (12, "12 hours"), (24, "24 hours"), (168, "7 days"), (720, "30 days"), (0, "Never"),
+    ]
 
     var pinnedTabs: [TabData] { tabs.filter(\.isPinned) }
     var unpinnedTabs: [TabData] { tabs.filter { !$0.isPinned } }
@@ -96,7 +103,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, symbol, theme, tint, tabs, folders, activeTabID, profileID, isSecret
+        case id, name, symbol, theme, tint, tabs, folders, activeTabID, profileID, isSecret, archiveAfterHours
     }
 
     // Older state files kept the colour as one of six names under "tint".
@@ -116,6 +123,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
         activeTabID = try c.decodeIfPresent(UUID.self, forKey: .activeTabID)
         profileID = try c.decodeIfPresent(UUID.self, forKey: .profileID)
         isSecret = try c.decodeIfPresent(Bool.self, forKey: .isSecret) ?? false
+        archiveAfterHours = try c.decodeIfPresent(Int.self, forKey: .archiveAfterHours)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -129,6 +137,7 @@ struct SpaceData: Codable, Identifiable, Equatable {
         try c.encodeIfPresent(activeTabID, forKey: .activeTabID)
         try c.encodeIfPresent(profileID, forKey: .profileID)
         if isSecret { try c.encode(isSecret, forKey: .isSecret) }
+        try c.encodeIfPresent(archiveAfterHours, forKey: .archiveAfterHours)
     }
 }
 

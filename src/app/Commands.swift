@@ -123,5 +123,6 @@ extension BrowserController {
         let title = tab.displayTitle.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
         BrowserController.clipboard.clearContents()
         BrowserController.clipboard.setString("[\(title)](\(url))", forType: .string)
+        showToast("Copied as Markdown")
     }
 }

@@ -32,6 +32,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // The hidden sidebar peeking out at the left edge (SidebarPeek.swift).
     var sidebarPeek: NSPanel?
     var sidebarPeekTimer: Timer?
+    // "Copied" and the like, over the page's bottom (TabActions.swift).
+    @Published var toastText: String?
+    var toastSymbol = "checkmark.circle.fill"
+    var toastPanel: NSPanel?
     @Published var zapping = false
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true
@@ -1028,6 +1032,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         guard let id = id ?? activeSpace.activeTabID, let tab = tabData(id) else { return }
         BrowserController.clipboard.clearContents()
         BrowserController.clipboard.setString(liveTabs[id]?.currentURL ?? tab.url, forType: .string)
+        showToast("Copied URL")
     }
 
     func navigate(to input: String) {
@@ -1239,11 +1244,14 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         sidebarPage = .tabs
     }
 
-    // Unpinned tabs nobody looked at for 12 hours, except the open one.
-    private func archiveStaleTabs() {
-        let cutoff = Date().addingTimeInterval(-Self.archiveAfter)
+    // Unpinned tabs nobody looked at for 12 hours (or the space's own
+    // choice), except the open one.
+    func archiveStaleTabs(now: Date = Date()) {
         for index in spaces.indices {
             var space = spaces[index]
+            let hours = space.archiveAfterHours ?? Int(Self.archiveAfter / 3600)
+            guard hours > 0 else { continue }
+            let cutoff = now.addingTimeInterval(-Double(hours) * 3600)
             let stale = space.tabs.filter {
                 !$0.isPinned && $0.id != space.activeTabID
                     && ($0.lastActive ?? .distantPast) < cutoff

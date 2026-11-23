@@ -79,6 +79,17 @@ struct SpaceEditorView: View {
                     profilePicker(style: style)
                 }
 
+                section("Archive Today's Tabs After") {
+                    Picker("", selection: Binding(
+                        get: { space?.archiveAfterHours ?? 12 },
+                        set: { hours in controller.updateSpace(spaceID) { $0.archiveAfterHours = hours } })
+                    ) {
+                        ForEach(SpaceData.archiveChoices, id: \.hours) { choice in Text(choice.name).tag(choice.hours) }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                }
+
                 HStack {
                     if isNew {
                         Button("Cancel") { controller.finishEditing(cancelled: true) }
