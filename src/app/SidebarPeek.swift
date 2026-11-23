@@ -49,20 +49,14 @@ extension BrowserController {
         let frame = NSRect(x: window.frame.minX + inset, y: window.frame.minY + inset,
                            width: sidebarWidth, height: window.frame.height - 2 * inset)
         if panel.parent == nil { window.addChildWindow(panel, ordered: .above) }
-        // Off screen an animation only ends with the next event: no slide.
-        guard !Diagnostics.headless else {
-            panel.setFrame(frame, display: true)
-            panel.alphaValue = 1
-            panel.orderFront(nil)
-            return
-        }
-        panel.setFrame(frame.offsetBy(dx: -sidebarWidth / 3, dy: 0), display: true)
-        panel.alphaValue = 0
+        // In place at once, fading in: the frame is right even when nothing
+        // animates (off screen, a locked screen).
+        panel.setFrame(frame, display: true)
+        panel.alphaValue = Diagnostics.headless ? 1 : 0
         panel.orderFront(nil)
+        guard !Diagnostics.headless else { return }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().setFrame(frame, display: true)
+            context.duration = 0.14
             panel.animator().alphaValue = 1
         }
     }
