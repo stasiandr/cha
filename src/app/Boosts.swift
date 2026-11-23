@@ -220,6 +220,8 @@ extension BrowserController {
     func tab(_ tab: ChaTab, didSendMessage message: String) {
         if message.hasPrefix("note ") {
             saveNote(message)
+        } else if message.hasPrefix("easel ") {
+            saveEasel(message)
         } else if message.hasPrefix("zap "), let site = BoostStore.site(tab.currentURL) {
             let selector = String(message.dropFirst(4))
             var boost = BoostStore.shared.boosts[site] ?? Boost(host: site)

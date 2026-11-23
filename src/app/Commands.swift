@@ -53,6 +53,7 @@ struct ChaCommand: Equatable {
         .init(id: "capture", title: "Capture", symbol: "camera.viewfinder", keys: "⇧⌘2", words: ["screenshot", "picture"]),
         .init(id: "extensions", title: "Extensions", symbol: "puzzlepiece.extension", keys: "", words: ["add-ons", "plugins", "web store"]),
         .init(id: "install-extension", title: "Install This Extension", symbol: "plus.app", keys: "", words: ["add to cha", "add to chrome", "web store"]),
+        .init(id: "new-easel", title: "New Easel", symbol: "scribble.variable", keys: "", words: ["canvas", "draw", "board", "whiteboard"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
     ]
 
@@ -101,6 +102,7 @@ extension BrowserController {
         case "new-folder": _ = addFolder()
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
+        case "new-easel": newEasel()
         case "extensions": openExtensions()
         case "install-extension": installExtensionFromPage()
         case "capture": startCapture()

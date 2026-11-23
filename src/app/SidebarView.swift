@@ -266,6 +266,7 @@ struct AddressPill: View {
     private func label(_ url: String) -> String {
         if url.isEmpty || url == "about:blank" { return "Search or enter address" }
         if NoteStore.id(in: url) != nil { return "Note" }
+        if EaselStore.id(in: url) != nil { return "Easel" }
         if url.hasPrefix("data:") { return "data:" }
         if url.hasPrefix("chrome://") || url.hasPrefix("about:") { return url }
         return displayHost(url) ?? url

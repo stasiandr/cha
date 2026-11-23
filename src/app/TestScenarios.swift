@@ -964,6 +964,64 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "easel":
+            // Easels: drawn, written, framed, pictures; kept; back on reopening.
+            var easelID: UUID?
+            func tab() -> ChaTab? { controller.activeTab }
+            func count() { tab()?.executeJavaScript("document.title = 'COUNT ' + document.querySelectorAll('.item').length + ' ' + document.querySelectorAll('#ink path').length") }
+            at(1) { controller.run(ChaCommand.all.first { $0.id == "new-easel" }!) }
+            at(3) {
+                easelID = tab().flatMap { EaselStore.id(in: $0.currentURL) }
+                SpaceChecks.check("New Easel opens a canvas as a tab", easelID != nil)
+                // The pen, by pointer events: a stroke across the board.
+                tab()?.executeJavaScript(withUserGesture: """
+                    document.querySelector('[data-tool="pen"]').click();
+                    const b = document.getElementById('board');
+                    const ev = (t, x, y) => b.dispatchEvent(new PointerEvent(t, { clientX: x, clientY: y, bubbles: true, pointerId: 1 }));
+                    ev('pointerdown', 100, 100); ev('pointermove', 150, 140); ev('pointermove', 220, 160); ev('pointerup', 220, 160);
+                    __chaEaselAdd({ type: 'text', x: 300, y: 80, text: 'Plan for Q1', color: '#0a84ff', size: 22 });
+                    __chaEaselAdd({ type: 'box', x: 280, y: 60, w: 240, h: 120, color: '#ff3b30' });
+                    __chaEaselAdd({ type: 'image', x: 60, y: 260, w: 40, src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="green"/></svg>') });
+                    """)
+            }
+            at(4.5) {
+                let saved = easelID.flatMap { EaselStore.load($0) } ?? ""
+                let types = ["path", "text", "box", "image"].filter { saved.contains("\"type\":\"\($0)\"") }
+                SpaceChecks.check("a stroke, text, a box and a picture are kept", types.count == 4, "\(types)")
+                SpaceChecks.check("its text names the tab", tab()?.title == "Plan for Q1", tab()?.title ?? "-")
+                if let id = controller.activeTabID { controller.unload(id) }
+            }
+            at(5) { if let id = controller.activeTabID { controller.activateTab(id) } }
+            at(7) { count() }
+            at(7.5) {
+                SpaceChecks.check("reopened, it is all back", tab()?.title == "COUNT 3 1", tab()?.title ?? "-")
+                controller.capture(.zero) { image in
+                    if let tiff = image?.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: "build/shots/easel.png"))
+                    }
+                    BrowserController.clipboard.clearContents()
+                }
+                tab()?.executeJavaScript(withUserGesture: """
+                    document.querySelector('[data-tool="move"]').click();
+                    const b = document.getElementById('board');
+                    const box = document.querySelector('.box');
+                    box.dispatchEvent(new PointerEvent('pointerdown', { clientX: 300, clientY: 70, bubbles: true, pointerId: 1 }));
+                    b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+                    """)
+            }
+            at(8) { count() }
+            at(8.5) {
+                SpaceChecks.check("a selected thing goes with Delete", tab()?.title == "COUNT 2 1", tab()?.title ?? "-")
+                tab()?.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))")
+            }
+            at(9) { count() }
+            at(9.5) {
+                SpaceChecks.check("and ⌘Z brings it back", tab()?.title == "COUNT 3 1", tab()?.title ?? "-")
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "notes":
             // Notes: written, kept as typed, back after the tab is reopened.
             var noteID: UUID?

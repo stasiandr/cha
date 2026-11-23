@@ -1393,6 +1393,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         Diagnostics.mark("first-load-end")
         applyBoost(to: tab)
         fillNote(tab)
+        fillEasel(tab)
         guard let id = tabIDsByObject[ObjectIdentifier(tab)],
             activeSpace.activeTabID == id
         else { return }
