@@ -28,6 +28,10 @@ NS_ASSUME_NONNULL_BEGIN
 // The page's floating window (document picture-in-picture) closed: by its
 // close button, by "Back to tab", or by the page.
 - (void)tabFloatingWindowClosed:(ChaTab*)tab NS_SWIFT_NAME(tabFloatingWindowClosed(_:));
+// A new document started loading in the main frame.
+- (void)tabDidStartLoad:(ChaTab*)tab NS_SWIFT_NAME(tabDidStartLoad(_:));
+// A page script of cha's own sent a line back (console "__cha_app__ …").
+- (void)tab:(ChaTab*)tab didSendMessage:(NSString*)message NS_SWIFT_NAME(tab(_:didSendMessage:));
 // Find in page: |count| matches, the |active|-th selected (1-based).
 - (void)tab:(ChaTab*)tab didFindCount:(int)count active:(int)active final:(BOOL)final;
 @end

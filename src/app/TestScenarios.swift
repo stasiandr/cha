@@ -903,6 +903,67 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "boost":
+            // Boosts: a site's own CSS, script and zapped things.
+            let port = ProcessInfo.processInfo.environment["CHA_TEST_PORT"] ?? "0"
+            let site = "http://127.0.0.1:\(port)/"
+            let probe = "document.title = [getComputedStyle(document.querySelector('h1')).color,"
+                + " getComputedStyle(document.querySelector('.ad')).display, document.body.dataset.boosted || 'no'].join(' | ')"
+            func title() -> String { controller.activeTab?.title ?? "-" }
+            func ask() { controller.activeTab?.executeJavaScript(probe) }
+            at(1) { controller.newTab(url: site) }
+            at(3) {
+                controller.openBoostEditor()
+                SpaceChecks.check("the editor opens for the site", controller.boostSite == "127.0.0.1" && controller.boostPanel?.isVisible == true,
+                                  controller.boostSite ?? "-")
+                controller.updateBoost { $0.css = "h1 { color: rgb(255, 0, 0) }" }
+            }
+            at(3.5) { ask() }
+            at(4) {
+                SpaceChecks.check("CSS goes on the page at once", title().hasPrefix("rgb(255, 0, 0) | block"), title())
+                if let panel = controller.boostPanel { shotWindow(panel, "boost-editor") }
+                controller.updateBoost { $0.js = "document.body.dataset.boosted = 'yes'" }
+                controller.startZapping()
+            }
+            at(4.5) {
+                controller.activeTab?.executeJavaScript(
+                    "document.querySelector('.ad').dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}))")
+            }
+            at(5) {
+                let zapped = BoostStore.shared.boosts["127.0.0.1"]?.zapped ?? []
+                SpaceChecks.check("Zap: a click hides the thing and keeps it", zapped == ["div.ad"] || zapped.first?.contains("div") == true, "\(zapped)")
+                controller.stopZapping()
+                controller.reload()
+            }
+            at(6.5) { ask() }
+            at(7) {
+                SpaceChecks.check("a new page of the site is boosted: CSS, zapped, script", title() == "rgb(255, 0, 0) | none | yes", title())
+                controller.newTab(url: site + "?second")
+            }
+            at(8.5) { ask() }
+            at(9) {
+                SpaceChecks.check("so is another tab of it", title() == "rgb(255, 0, 0) | none | yes", title())
+                controller.updateBoost { $0.enabled = false }
+            }
+            at(9.5) { ask() }
+            at(10) {
+                SpaceChecks.check("switched off, the page is itself again", title().hasPrefix("rgb(0, 0, 0) | block"), title())
+                controller.updateBoost { $0.enabled = true }
+                let reread = BoostStore()
+                SpaceChecks.check("boosts are kept", reread.boosts["127.0.0.1"]?.css == "h1 { color: rgb(255, 0, 0) }")
+                SpaceChecks.check("not for other sites", BoostStore.shared.boost(for: "https://example.com/") == nil)
+                controller.closeBoostEditor()
+                SpaceChecks.check("Done closes the editor", controller.boostPanel?.isVisible != true)
+                BoostStore.shared.remove("127.0.0.1")
+                controller.applyBoost(site: "127.0.0.1")
+            }
+            at(10.5) { ask() }
+            at(11) {
+                SpaceChecks.check("a deleted boost leaves the page", title().hasPrefix("rgb(0, 0, 0) | block"), title())
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "sound":
             // A tab playing sound: its speaker, mute, and the mini player once
             // it is left. (The checks run with Chromium's sound off.)

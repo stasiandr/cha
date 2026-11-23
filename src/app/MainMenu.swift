@@ -108,6 +108,7 @@ enum MainMenu {
         view.add("Zoom Out", "-", target, #selector(MenuTarget.zoomOut))
         view.add("Actual Size", "0", target, #selector(MenuTarget.zoomReset))
         view.addItem(.separator())
+        view.add("Boost This Site…", "", target, #selector(MenuTarget.boostSite), [])
         view.add("Developer Tools", "i", target, #selector(MenuTarget.devTools), [.command, .option])
         view.add("View Source", "u", target, #selector(MenuTarget.viewSource), [.command, .option])
         bar.addItem(submenu: view, title: "View")
@@ -275,6 +276,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func copyLink() { controller?.copyLink() }
     @objc func copyMarkdown() { controller?.copyLinkAsMarkdown() }
     @objc func splitView() { controller?.startSplit() }
+    @objc func boostSite() { controller?.openBoostEditor() }
     @objc func closeSplitView() { controller?.closeSplit() }
     @objc func zoomIn() { controller?.chromeCommand(ChaCommand.Chrome.zoomIn) }
     @objc func zoomOut() { controller?.chromeCommand(ChaCommand.Chrome.zoomOut) }

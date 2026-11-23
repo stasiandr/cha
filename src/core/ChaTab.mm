@@ -894,6 +894,10 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
 - (void)cefNewDocument {
   [_mediaFrames removeAllObjects];
   [self updateMedia];
+  id<ChaTabDelegate> delegate = self.delegate;
+  if ([delegate respondsToSelector:@selector(tabDidStartLoad:)]) {
+    [delegate tabDidStartLoad:self];
+  }
 }
 
 // One frame's sound: {"t": its token, "p": playing, "paused", "title", "artist"}.
@@ -966,6 +970,13 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
 
 - (BOOL)cefConsoleMessage:(NSString*)message {
   // The checks' probes into a page they don't own (Meet): its answer in the log.
+  if ([message hasPrefix:@"__cha_app__ "]) {
+    id<ChaTabDelegate> delegate = self.delegate;
+    if ([delegate respondsToSelector:@selector(tab:didSendMessage:)]) {
+      [delegate tab:self didSendMessage:[message substringFromIndex:12]];
+    }
+    return YES;
+  }
   if ([message hasPrefix:@"__cha_media__ "]) {
     [self cefMediaMessage:[message substringFromIndex:14]];
     return YES;

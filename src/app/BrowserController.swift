@@ -25,6 +25,10 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     // What tabs play (Media.swift): the sidebar's speakers and mini player.
     @Published var media: [UUID: MediaState] = [:]
     @Published var lastPlayedTab: UUID?
+    // The Boost editor (Boosts.swift): the site it edits, its panel, Zap mode.
+    @Published var boostSite: String?
+    var boostPanel: NSPanel?
+    @Published var zapping = false
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true
     @Published var isFullscreen = false
@@ -271,6 +275,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     func layoutActiveTab() {
         layoutContentWell()
         repositionFindBar()
+        repositionBoostPanel()
         peek?.layout()
         guard let id = activeSpace.activeTabID, let tab = liveTabs[id],
             let native = tab.nativeWindow
@@ -1371,6 +1376,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func tabDidFinishLoad(_ tab: ChaTab) {
         Diagnostics.mark("first-load-end")
+        applyBoost(to: tab)
         guard let id = tabIDsByObject[ObjectIdentifier(tab)],
             activeSpace.activeTabID == id
         else { return }
