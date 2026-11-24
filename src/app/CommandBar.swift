@@ -7,6 +7,7 @@ enum CommandMode {
     case newTab  // ⌘T — the result opens in a new tab.
     case current  // ⌘L — the result replaces what the active tab shows.
     case split  // ⌃⇧= — the result opens beside the active tab.
+    case tabs  // ⇧⌘F — only tabs, found by their page's text too.
 }
 
 enum CommandResult: Identifiable, Equatable {
@@ -18,6 +19,7 @@ enum CommandResult: Identifiable, Equatable {
     case archived(id: UUID, title: String, url: String)
     case history(title: String, url: String)  // A page visited before.
     case command(ChaCommand)  // Something cha does: Copy URL, New Space.
+    case found(spaceID: UUID, tabID: UUID, title: String, detail: String)  // Search All Tabs.
 
     var id: String {
         switch self {
@@ -29,6 +31,7 @@ enum CommandResult: Identifiable, Equatable {
         case .archived(let id, _, _): return "archived-\(id)"
         case .history(_, let url): return "history-\(url)"
         case .command(let command): return "command-\(command.id)"
+        case .found(_, let tabID, _, _): return "found-\(tabID)"
         }
     }
 
@@ -42,6 +45,7 @@ enum CommandResult: Identifiable, Equatable {
         case .archived(_, let title, _): return title
         case .history(let title, let url): return title.isEmpty ? History.bare(url) : title
         case .command(let command): return command.title
+        case .found(_, _, let title, _): return title
         }
     }
 
@@ -55,6 +59,7 @@ enum CommandResult: Identifiable, Equatable {
         case .archived(_, _, let url): return "Archived · " + url
         case .history(_, let url): return History.bare(url)
         case .command(let command): return command.keys.isEmpty ? "Command" : "Command · " + command.keys
+        case .found(_, _, _, let detail): return detail
         }
     }
 
@@ -68,6 +73,7 @@ enum CommandResult: Identifiable, Equatable {
         case .archived: return "archivebox"
         case .history: return "clock"
         case .command(let command): return command.symbol
+        case .found: return "square.on.square"
         }
     }
 }
@@ -101,7 +107,8 @@ struct CommandBarView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                 TextField(
-                    "Search or enter address", text: $controller.commandQuery
+                    controller.commandMode == .tabs ? "Search all tabs" : "Search or enter address",
+                    text: $controller.commandQuery
                 )
                 .textFieldStyle(.plain)
                 .font(.system(size: 19))

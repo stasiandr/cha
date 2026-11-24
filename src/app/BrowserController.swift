@@ -36,18 +36,14 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var toastText: String?
     var toastSymbol = "checkmark.circle.fill"
     var toastPanel: NSPanel?
-    var captureOverlay: NSPanel?
     var extensionsPanel: NSPanel?
     var lastExtensionPopup: String?
     var syncPanel: NSPanel?
     #if CHA_SYNC
     var sync: ChaSync?
     #endif
-    // Arc Max on the Mac's own model (ArcMax.swift).
-    var askPanel: NSPanel?
-    @Published var askAnswer = ""
-    @Published var askBusy = false
-    var pageTextRequests: [String: (String) -> Void] = [:]  // Capture's drag-over-the-page layer.
+    // Search All Tabs (TabSearch.swift): pages' text asked of the renderer.
+    var pageTextRequests: [String: (String) -> Void] = [:]
     @Published var zapping = false
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true
@@ -123,6 +119,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     private var tabIDsByObject: [ObjectIdentifier: UUID] = [:]
     // Pages visited, for the command bar; the address each tab last counted.
     let history = History()
+    // Pages' text, for Search All Tabs (TabSearch.swift).
+    let tabText = TabTextStore()
     private var visitedURL: [UUID: String] = [:]
     private var saveScheduled = false
 
@@ -506,6 +504,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         isQuitting = true
         save()
         history.save(wait: true)
+        tabText.save(wait: true)
         closeCommandBar()
         for tab in liveTabs.values {
             if let native = tab.nativeWindow {
@@ -1418,8 +1417,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         applyBoost(to: tab)
         fillNote(tab)
         fillEasel(tab)
-        guard let id = tabIDsByObject[ObjectIdentifier(tab)],
-            activeSpace.activeTabID == id
+        guard let id = tabIDsByObject[ObjectIdentifier(tab)] else { return }
+        indexTextAfterLoad(tab, id: id)
+        guard activeSpace.activeTabID == id
         else { return }
         autofillVerificationCode(in: tab)
     }

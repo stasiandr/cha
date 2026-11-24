@@ -9,6 +9,7 @@ extension BrowserController {
         commandQuery = mode == .current ? (activeTab?.currentURL ?? "") : ""
         commandSelection = 0
         refreshCommandResults()
+        if mode == .tabs { refreshTabTexts() }
 
         let panel = commandPanel ?? makeCommandPanel()
         commandPanel = panel
@@ -100,6 +101,12 @@ extension BrowserController {
     func refreshCommandResults() {
         let query = commandQuery.trimmingCharacters(in: .whitespaces)
         var results: [CommandResult] = []
+
+        if commandMode == .tabs {
+            commandResults = tabSearchResults(query)
+            commandSelection = min(commandSelection, max(commandResults.count - 1, 0))
+            return
+        }
 
         // An otpauth:// link is a secret, not an address: offer to keep it.
         if query.lowercased().hasPrefix("otpauth://"), OTPAuth.parse(query) != nil {
@@ -196,6 +203,7 @@ extension BrowserController {
 
     func runSelectedCommand() {
         guard commandResults.indices.contains(commandSelection) else {
+            guard commandMode != .tabs else { return }
             let query = commandQuery.trimmingCharacters(in: .whitespaces)
             if !query.isEmpty { runCommand(.open(url: normalizedURL(from: query))) }
             return
@@ -205,7 +213,7 @@ extension BrowserController {
 
     func runCommand(_ result: CommandResult) {
         switch result {
-        case .tab(let spaceID, let tabID, _, _):
+        case .tab(let spaceID, let tabID, _, _), .found(let spaceID, let tabID, _, _):
             if spaceID != activeSpaceID { selectSpace(spaceID) }
             activateTab(tabID)
         case .open(let url), .history(_, let url):
@@ -233,6 +241,7 @@ extension BrowserController {
         case .newTab: newTab(url: url)
         case .current: navigate(to: url)
         case .split: openInSplit(url)
+        case .tabs: newTab(url: url)
         }
     }
 }

@@ -964,31 +964,85 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
-        case "ask":
-            // Arc Max on this Mac's model: a question about the page, and
-            // tidy tab titles. Skipped (not passed) where the model is missing.
+        case "tidy":
+            // Arc Max's Tidy Titles on this Mac's own model. Skipped (not
+            // passed) where the model is missing.
             guard PageAI.available else {
                 NSLog("SKIP Apple's on-device model is not available: %@", PageAI.unavailableReason)
                 at(1) { NSLog("CHECKS passed=0 failed=0"); NSApp.terminate(nil) }
                 break
             }
-            let page = "data:text/html,<title>Amazon.com : Wireless Noise Cancelling Headphones Model X200, Black : Electronics</title>"
-                + "<p>The Eiffel Tower in Paris was finished in 1889. It is 330 metres tall and was built by Gustave Eiffel's company.</p>"
+            let page = "data:text/html,<title>Amazon.com : Wireless Noise Cancelling Headphones Model X200, Black : Electronics</title><p>Headphones</p>"
             at(1) { controller.newTab(url: page) }
             at(3) {
-                controller.run(ChaCommand.all.first { $0.id == "ask" }!)
-                SpaceChecks.check("Ask opens over the page", controller.askPanel?.isVisible == true)
-                controller.ask("How tall is the Eiffel Tower?") {
-                    SpaceChecks.check("the answer comes from the page", controller.askAnswer.contains("330"), controller.askAnswer)
-                    NSLog("ASK answer: %@", controller.askAnswer)
-                    controller.closeAsk()
-                    controller.tidyTabTitles {
-                        let title = controller.activeTab.flatMap { _ in controller.tabData(controller.activeTabID!)?.displayTitle } ?? "-"
-                        SpaceChecks.check("Tidy gives the tab a short name", title.count <= 40 && !title.contains("Amazon") && !title.isEmpty, title)
-                        NSLog("ASK tidy: %@", title)
-                        NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
-                        NSApp.terminate(nil)
-                    }
+                controller.tidyTabTitles {
+                    let title = controller.activeTabID.flatMap { controller.tabData($0)?.displayTitle } ?? "-"
+                    SpaceChecks.check("Tidy gives the tab a short name", title.count <= 40 && !title.contains("Amazon") && !title.isEmpty, title)
+                    NSLog("TIDY title: %@", title)
+                    NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                    NSApp.terminate(nil)
+                }
+            }
+
+        case "tabsearch":
+            // Search All Tabs: by title, by address, by the page's text, in
+            // every space; a tab not loaded is still found by what it said;
+            // the secret space's pages are never read.
+            func page(_ title: String, _ body: String) -> String {
+                let html = "<meta charset=utf-8><title>\(title)</title><p>\(body)</p>"
+                return "data:text/html;charset=utf-8," + (html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? html)
+            }
+            func found(_ query: String) -> [CommandResult] { controller.tabSearchResults(query) }
+            func titles(_ query: String) -> String { found(query).map(\.title).joined(separator: ", ") }
+            var workSpace: UUID?
+            var homeSpace: UUID?
+            at(1) {
+                homeSpace = controller.activeSpaceID
+                controller.newTab(url: page("Alpha notes", "The quick brown fox visited Zanzibar in spring."))
+                controller.newTab(url: page("Beta board", "Nothing to see here."))
+                controller.addSpace()
+                controller.finishEditing()
+                workSpace = controller.activeSpaceID
+                controller.updateSpace(controller.activeSpaceID) { $0.name = "Work" }
+                controller.newTab(url: page("Gamma plan", "Climb Kilimanjaro with the team. Привет, Ёлка!"))
+            }
+            at(4) {
+                controller.openCommandBar(mode: .tabs)
+                SpaceChecks.check("⇧⌘F opens the bar on tabs only", controller.commandMode == .tabs && controller.commandPanel?.isVisible == true)
+            }
+            at(6) {
+                SpaceChecks.check("a tab is found by its title", titles("beta") == "Beta board", titles("beta"))
+                let zanzibar = found("zanzibar")
+                SpaceChecks.check("and by its page's text, in another space", zanzibar.map(\.title) == ["Alpha notes"], titles("zanzibar"))
+                SpaceChecks.check("which says the space and shows the words around",
+                    zanzibar.first?.subtitle.contains(" · ") == true && zanzibar.first?.subtitle.contains("visited Zanzibar in spring") == true,
+                    zanzibar.first?.subtitle ?? "-")
+                SpaceChecks.check("every word must be there", found("fox kilimanjaro").isEmpty && titles("team climb") == "Gamma plan", titles("team climb"))
+                SpaceChecks.check("case and accents don't matter", titles("ёлка") == "Gamma plan" && titles("ZANZIBAR") == "Alpha notes", titles("ёлка"))
+                SpaceChecks.check("nothing typed, nothing listed", found("").isEmpty)
+                // Picking a tab of the other space goes there.
+                controller.commandQuery = "zanzibar"
+                controller.runSelectedCommand()
+                SpaceChecks.check("picking it opens it in its space",
+                    controller.activeSpaceID == homeSpace && controller.activeTab?.title == "Alpha notes"
+                        && controller.commandPanel?.isVisible != true, controller.activeTab?.title ?? "-")
+                // A tab that is not loaded is still found by its text.
+                if let gamma = controller.space(workSpace!)?.tabs.first?.id { controller.unload(gamma) }
+                controller.tabText.save(wait: true)
+            }
+            at(7) {
+                SpaceChecks.check("a tab not loaded is found by what it said", titles("kilimanjaro") == "Gamma plan", titles("kilimanjaro"))
+                let saved = (try? String(contentsOf: Persistence.directory.appendingPathComponent("tab-text.json"), encoding: .utf8)) ?? ""
+                SpaceChecks.check("and that is kept for the next launch", saved.contains("Kilimanjaro"))
+                // A closed tab takes its text with it.
+                if let beta = controller.space(homeSpace!)?.tabs.first(where: { $0.displayTitle == "Beta board" })?.id {
+                    controller.closeTab(beta)
+                }
+                controller.refreshTabTexts {
+                    SpaceChecks.check("a closed tab is not found and its text is gone",
+                        found("nothing").isEmpty && !controller.tabText.entries.values.contains { $0.text.contains("Nothing to see") })
+                    NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                    NSApp.terminate(nil)
                 }
             }
 
@@ -1023,12 +1077,6 @@ enum TestScenarios {
             at(7) { count() }
             at(7.5) {
                 SpaceChecks.check("reopened, it is all back", tab()?.title == "COUNT 3 1", tab()?.title ?? "-")
-                controller.capture(.zero) { image in
-                    if let tiff = image?.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
-                        try? png.write(to: URL(fileURLWithPath: "build/shots/easel.png"))
-                    }
-                    BrowserController.clipboard.clearContents()
-                }
                 tab()?.executeJavaScript(withUserGesture: """
                     document.querySelector('[data-tool="move"]').click();
                     const b = document.getElementById('board');
@@ -1079,48 +1127,6 @@ enum TestScenarios {
             }
             at(7.5) {
                 SpaceChecks.check("reopened, the note comes back", tab()?.title == "TEXT Shopping list / milk & bread #2 100%", tab()?.title ?? "-")
-                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
-                NSApp.terminate(nil)
-            }
-
-        case "capture":
-            // Capture: part of the page, or all of it, to the clipboard.
-            let halves = "data:text/html,<style>body{margin:0;display:flex;height:100vh}div{flex:1}</style>"
-                + "<div style='background:rgb(255,0,0)'></div><div style='background:rgb(0,0,255)'></div>"
-            func color(_ image: NSImage?, _ x: CGFloat, _ y: CGFloat) -> NSColor? {
-                guard let rep = image?.representations.first as? NSBitmapImageRep else { return nil }
-                return rep.colorAt(x: Int(x * CGFloat(rep.pixelsWide)), y: Int(y * CGFloat(rep.pixelsHigh)))?.usingColorSpace(.sRGB)
-            }
-            // Colour-managed: pure red comes back as a strong red, not 1/0/0.
-            func isRed(_ c: NSColor?) -> Bool { guard let c else { return false }; return c.redComponent > c.blueComponent + 0.4 && c.redComponent > c.greenComponent + 0.4 }
-            func isBlue(_ c: NSColor?) -> Bool { guard let c else { return false }; return c.blueComponent > c.redComponent + 0.4 }
-            at(1) { controller.newTab(url: halves) }
-            at(3) {
-                controller.run(ChaCommand.all.first { $0.id == "capture" }!)
-                SpaceChecks.check("Capture covers the page to drag over", controller.captureOverlay?.isVisible == true
-                    && (controller.captureOverlay?.frame.isClose(to: controller.contentScreenRect) ?? false))
-                controller.captureOverlay?.cancelOperation(nil)
-                SpaceChecks.check("Esc lets it be", controller.captureOverlay == nil)
-                var left = controller.contentScreenRect
-                left.size.width = left.width / 2 - 20
-                controller.capture(left) { image in
-                    SpaceChecks.check("a dragged part becomes a picture of just that",
-                        isRed(color(image, 0.5, 0.5)) && isRed(color(image, 0.95, 0.5)), "\(String(describing: color(image, 0.5, 0.5)))")
-                    SpaceChecks.check("and is on the clipboard (the checks' own)",
-                        BrowserController.clipboard.data(forType: .png) != nil && controller.toastText == "Copied screenshot")
-                }
-            }
-            at(4.5) {
-                controller.capture(.zero) { image in
-                    let page = controller.contentScreenRect
-                    SpaceChecks.check("a click takes the whole page",
-                        isRed(color(image, 0.1, 0.5)) && isBlue(color(image, 0.9, 0.5))
-                            && abs((image?.size.width ?? 0) - page.width) < 2,
-                        "\(image?.size ?? .zero) vs \(page.size), \(String(describing: color(image, 0.1, 0.5))) \(String(describing: color(image, 0.9, 0.5)))")
-                }
-            }
-            at(6) {
-                BrowserController.clipboard.clearContents()
                 NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
                 NSApp.terminate(nil)
             }

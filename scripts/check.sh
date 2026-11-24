@@ -163,11 +163,18 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/bo
   echo "boost FAILED"; failed=$((failed + 1))
 fi
 
-step "Arc Max on the Mac's own model: ask the page, tidy titles"
-run_scenario ask 90; code=$?
-grep -E 'CHECK |SKIP' build/check/ask.log | sed 's/^.*cha\[[^]]*\] //'
-if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/ask.log; then
-  echo "ask FAILED"; failed=$((failed + 1))
+step "Tidy Titles on the Mac's own model"
+run_scenario tidy 60; code=$?
+grep -E 'CHECK |SKIP' build/check/tidy.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/tidy.log; then
+  echo "tidy FAILED"; failed=$((failed + 1))
+fi
+
+step "Search All Tabs: titles, addresses, pages' text, every space"
+run_scenario tabsearch 30; code=$?
+grep -E 'CHECK ' build/check/tabsearch.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/tabsearch.log; then
+  echo "tabsearch FAILED"; failed=$((failed + 1))
 fi
 
 step "Easels: drawn, written, framed, kept"
@@ -182,13 +189,6 @@ run_scenario notes 30; code=$?
 grep -E 'CHECK ' build/check/notes.log | sed 's/^.*cha\[[^]]*\] //'
 if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/notes.log; then
   echo "notes FAILED"; failed=$((failed + 1))
-fi
-
-step "Capture: part of the page, or all of it, to the clipboard"
-run_scenario capture 30; code=$?
-grep -E 'CHECK ' build/check/capture.log | sed 's/^.*cha\[[^]]*\] //'
-if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/capture.log; then
-  echo "capture FAILED"; failed=$((failed + 1))
 fi
 
 step "Chrome extensions: installed from a CRX, running after a restart"

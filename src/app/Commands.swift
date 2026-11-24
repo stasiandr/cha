@@ -50,12 +50,10 @@ struct ChaCommand: Equatable {
         .init(id: "boost", title: "Boost This Site", symbol: "paintbrush", keys: "", words: ["css", "style", "customize", "zap"]),
         .init(id: "routing", title: "Route Links to Spaces…", symbol: "arrow.triangle.branch", keys: "", words: ["air traffic control", "rules", "links from apps"]),
         .init(id: "new-note", title: "New Note", symbol: "note.text", keys: "⌃⌘N", words: ["easel", "write", "notes"]),
-        .init(id: "capture", title: "Capture", symbol: "camera.viewfinder", keys: "⇧⌘2", words: ["screenshot", "picture"]),
         .init(id: "extensions", title: "Extensions", symbol: "puzzlepiece.extension", keys: "", words: ["add-ons", "plugins", "web store"]),
         .init(id: "install-extension", title: "Install This Extension", symbol: "plus.app", keys: "", words: ["add to cha", "add to chrome", "web store"]),
         .init(id: "new-easel", title: "New Easel", symbol: "scribble.variable", keys: "", words: ["canvas", "draw", "board", "whiteboard"]),
-        .init(id: "ask", title: "Ask This Page", symbol: "sparkles", keys: "⇧⌘F", words: ["ai", "question", "arc max", "chat"]),
-        .init(id: "summarize", title: "Summarize This Page", symbol: "text.append", keys: "", words: ["ai", "tldr", "summary", "arc max"]),
+        .init(id: "search-tabs", title: "Search All Tabs", symbol: "text.magnifyingglass", keys: "⇧⌘F", words: ["find in tabs", "text", "every tab"]),
         .init(id: "tidy", title: "Tidy Tab Titles", symbol: "wand.and.stars", keys: "", words: ["ai", "rename tabs", "arc max"]),
         .init(id: "sync", title: "Sync…", symbol: "arrow.triangle.2.circlepath", keys: "", words: ["other mac", "devices", "arc sync"]),
         .init(id: "downloads", title: "Downloads", symbol: "arrow.down.circle", keys: "⇧⌘L", words: []),
@@ -107,13 +105,11 @@ extension BrowserController {
         case "little-window": openLittleWindow("about:blank")
         case "downloads": toggleDownloads()
         case "sync": openSync()
-        case "ask": openAsk()
-        case "summarize": openAsk(summarize: true)
+        case "search-tabs": openCommandBar(mode: .tabs)
         case "tidy": tidyTabTitles()
         case "new-easel": newEasel()
         case "extensions": openExtensions()
         case "install-extension": installExtensionFromPage()
-        case "capture": startCapture()
         case "new-note": newNote()
         case "routing": openRoutingRules()
         case "boost": openBoostEditor()

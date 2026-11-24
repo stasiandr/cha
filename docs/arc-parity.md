@@ -135,9 +135,9 @@ now says so and skips (exit 75) instead of reporting those failures.
   Reload, Find, Zoom In/Out/Actual Size, Print, Developer Tools, View
   Source, Picture in Picture, Toggle Sidebar, New Space, Edit Space, New
   Folder, Little Window, Downloads, Split View, Boost, New Note, New Easel,
-  Capture, Route Links, Extensions, Ask/Summarize, Tidy Titles; archived
+  Route Links, Extensions, Search All Tabs, Tidy Titles; archived
   tabs are found too. (spaces)
-- Arc's keys: ⌘= ⌘- ⌘0, ⌘P, ⌥⌘I, ⌥⌘U, ⌥⇧⌘C, ⌃⇧= / ⌃⇧-, ⌃⌘N, ⇧⌘2, ⇧⌘F.
+- Arc's keys: ⌘= ⌘- ⌘0, ⌘P, ⌥⌘I, ⌥⌘U, ⌥⇧⌘C, ⌃⇧= / ⌃⇧-, ⌃⌘N. ⇧⌘F is Search All Tabs here, not Arc Max.
 - ⌃Tab / ⌃⇧Tab through recently used tabs, ⌘Tab-style. (spaces, real key
   events)
 - A speaker on tabs that play sound (click mutes), and a mini player in the
@@ -148,8 +148,8 @@ now says so and skips (exit 75) instead of reporting those failures.
   (openurl)
 - Notes (⌃⌘N) and Easels (canvas: pen, text, boxes, pasted pictures).
   (notes, easel)
-- Capture: ⇧⌘2, a dragged part of the page or all of it, to the clipboard.
-  (capture)
+- Search All Tabs (⇧⌘F, cha's own): every tab of every space by title,
+  address and the text of its page, unloaded tabs included. (tabsearch)
 - Chrome extensions from the Chrome Web Store: installed by link or ID,
   keep their store ID, loaded at launch, with buttons under the address
   that open their popups; options from the button's menu. (extensions; by
@@ -157,8 +157,11 @@ now says so and skips (exit 75) instead of reporting those failures.
   through; Dark Reader restyles a light page; extensions get chrome.tabs,
   chrome.scripting, chrome.storage and their service worker.) Only the
   default profile's spaces get them.
-- Arc Max on Apple's on-device model: Ask This Page / Summarize (⇧⌘F) and
-  Tidy Tab Titles; nothing leaves the Mac, no key. (ask)
+- Arc Max's Tidy Tab Titles on Apple's on-device model; nothing leaves the
+  Mac, no key. (tidy)
+
+Left out on purpose (the user's call, 2026-11-24): Arc Max's Ask/Summarize
+(Claude does that) and Capture (macOS's ⇧⌘4 does that).
 - The hidden sidebar peeks out at the left edge. (spaces)
 - Close Tabs Below / Close Other Tabs, a "Copied" toast, each space's own
   archive time (12 h, 24 h, 7 d, 30 d, never). (spaces)

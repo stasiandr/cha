@@ -54,7 +54,6 @@ enum MainMenu {
         file.add("Empty Tab", "", target, #selector(MenuTarget.emptyTab), [])
         file.add("New Note", "n", target, #selector(MenuTarget.newNote), [.command, .control])
         file.add("New Easel", "", target, #selector(MenuTarget.newEasel), [])
-        file.add("Capture", "2", target, #selector(MenuTarget.capture), [.command, .shift])
         file.addItem(.separator())
         file.add("Print…", "p", target, #selector(MenuTarget.printPage))
         file.addItem(.separator())
@@ -88,7 +87,7 @@ enum MainMenu {
             keyEquivalent: "a")
         edit.addItem(.separator())
         edit.add("Find…", "f", target, #selector(MenuTarget.findInPage))
-        edit.add("Ask This Page…", "f", target, #selector(MenuTarget.askPage), [.command, .shift])
+        edit.add("Search All Tabs…", "f", target, #selector(MenuTarget.searchTabs), [.command, .shift])
         edit.add("Find Next", "g", target, #selector(MenuTarget.findNext))
         edit.add("Find Previous", "g", target, #selector(MenuTarget.findPrevious), [.command, .shift])
         bar.addItem(submenu: edit, title: "Edit")
@@ -292,9 +291,8 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     @objc func boostSite() { controller?.openBoostEditor() }
     @objc func routing() { controller?.openRoutingRules() }
     @objc func newNote() { controller?.newNote() }
-    @objc func capture() { controller?.startCapture() }
     @objc func newEasel() { controller?.newEasel() }
-    @objc func askPage() { controller?.openAsk() }
+    @objc func searchTabs() { controller?.openCommandBar(mode: .tabs) }
     @objc func tidyTitles() { controller?.tidyTabTitles() }
     @objc func extensions() { controller?.openExtensions() }
     @objc func syncWindow() { controller?.openSync() }
