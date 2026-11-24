@@ -1198,6 +1198,200 @@ enum TestScenarios {
             at(1) { NSLog("SKIP built without cloudsync"); NSLog("CHECKS passed=0 failed=0"); NSApp.terminate(nil) }
             #endif
 
+        case "flows":
+            // Tab switching under stress: hundreds of random steps (go to a
+            // tab, open, close, ⌘⇧T, ⌃Tab, split, unsplit, another space,
+            // unload), the state checked after each. Then picture in picture:
+            // leaving a playing tab, coming back, "Back to tab" and ×.
+            BrowserController.instantPages = true
+            var rng = SystemRandomNumberGenerator()
+            var seed = UInt64(ProcessInfo.processInfo.environment["CHA_SEED"] ?? "") ?? UInt64.random(in: 1...999_999, using: &rng)
+            NSLog("FLOWS seed %llu", seed)
+            func next(_ n: Int) -> Int {  // xorshift, so a seed replays a run
+                seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17
+                return Int(seed % UInt64(max(n, 1)))
+            }
+            func page(_ t: String) -> String { "data:text/html,<title>\(t)</title><h1>\(t)</h1>" }
+            var problems: [String] = []
+            var steps = 0
+            func allTabIDs() -> Set<UUID> { Set(controller.spaces.flatMap(\.tabs).map(\.id) + controller.favorites.map(\.id)) }
+            func shownWindows() -> [NSWindow] {
+                (controller.window.childWindows ?? []).filter { $0.isVisible && $0.alphaValue > 0.5 && !($0 is NSPanel) }
+            }
+            // What must hold whatever happened.
+            func verify(_ step: String, settled: Bool) {
+                let c = controller
+                var bad: [String] = []
+                let active = c.activeTabID
+                if let active, !c.activeSpace.tabs.contains(where: { $0.id == active }) && !c.favorites.contains(where: { $0.id == active }) {
+                    bad.append("active tab not in the space")
+                }
+                let expected = Set([active, active.flatMap { c.splitPartner($0) }].compactMap { $0 })
+                let expectedWindows = expected.compactMap { c.liveTabs[$0]?.nativeWindow }
+                for window in shownWindows() where !expectedWindows.contains(where: { $0 === window }) {
+                    let who = c.liveTabs.first { $0.value.nativeWindow === window }.flatMap { c.tabData($0.key)?.displayTitle } ?? "?"
+                    bad.append("stray page on screen: \(who)")
+                }
+                if settled {
+                    for id in expected {
+                        guard let window = c.liveTabs[id]?.nativeWindow else { bad.append("no window for a page in front"); continue }
+                        if !(window.isVisible && window.parent === c.window) { bad.append("page in front not shown: \(c.tabData(id)?.displayTitle ?? "?")") }
+                        if !window.frame.isClose(to: c.pageFrame(for: id), tolerance: 2) { bad.append("page out of place: \(window.frame) vs \(c.pageFrame(for: id))") }
+                    }
+                }
+                let ids = allTabIDs()
+                if let ghost = c.liveTabs.keys.first(where: { !ids.contains($0) }) { bad.append("a closed tab still has a browser \(ghost)") }
+                if let ghost = c.media.keys.first(where: { c.liveTabs[$0] == nil }) { bad.append("sound noted for a tab without a browser \(ghost)") }
+                for space in c.spaces {
+                    for tab in space.tabs where tab.splitWith != nil {
+                        if let partner = tab.splitWith, c.tabData(partner)?.splitWith != tab.id { bad.append("a one-sided split") }
+                    }
+                }
+                if c.isFindOpen && active == nil { bad.append("find bar with no page") }
+                if !bad.isEmpty { problems.append("\(step): " + bad.joined(separator: "; ")) }
+            }
+            let home = controller.activeSpaceID
+            var other = UUID()
+            at(1) {
+                for i in 1...6 { controller.newTab(url: page("Flow \(i)")) }
+                controller.addSpace()
+                controller.finishEditing()
+                other = controller.activeSpaceID
+                controller.newTab(url: page("Elsewhere"))
+                controller.selectSpace(home, animated: false)
+            }
+            // The random walk, a step every 0.12 s, checked before each next one.
+            var walk: [(Double, () -> Void)] = []
+            for _ in 0..<220 {
+                walk.append((0.12, {
+                    verify("after step \(steps)", settled: false)
+                    let c = controller
+                    let today = c.activeSpace.unpinnedTabs.map(\.id)
+                    steps += 1
+                    var op = "-"
+                    defer { if ProcessInfo.processInfo.environment["CHA_FLOWS_LOG"] != nil { NSLog("FLOWS %d %@ space=%@ active=%@ cycle=%d", steps, op, c.activeSpace.name, c.activeTabID.flatMap { c.tabData($0)?.displayTitle } ?? "-", c.recentCycle == nil ? 0 : 1) } }
+                    switch next(12) {
+                    case 0, 1, 2:
+                        if !today.isEmpty { op = "go to"; c.activateTab(today[next(today.count)]) }
+                    case 3:
+                        if c.activeSpace.tabs.count < 12 { op = "new"; c.newTab(url: page("New \(steps)")) }
+                    case 4:
+                        if c.activeSpace.tabs.count > 2, let id = c.activeTabID { op = "close front"; c.closeTab(id) }
+                    case 5:
+                        if today.count > 3 { op = "close one"; c.closeTab(today[next(today.count)]) }
+                    case 6: op = "reopen"; c.reopenClosedTab()
+                    case 7:
+                        op = "ctrl-tab"; c.stepRecentTabs(backwards: next(2) == 0)
+                        if next(2) == 0 { op += " release"; c.endRecentTabsCycle() }
+                    case 8:
+                        if let id = c.activeTabID, today.count > 1 {
+                            let partner = today[next(today.count)]
+                            if partner != id { op = "split"; c.split(id, with: partner) }
+                        }
+                    case 9: op = "unsplit"; c.closeSplit()
+                    case 10:
+                        op = "space"; c.endRecentTabsCycle()
+                        c.selectSpace(c.activeSpaceID == home ? other : home, animated: false)
+                    default:
+                        if today.count > 2 { let id = today[next(today.count)]; if id != c.activeTabID { op = "unload"; c.unload(id) } }
+                    }
+                }))
+            }
+            walk.append((1.5, {
+                controller.endRecentTabsCycle()
+                verify("settled after \(steps) steps", settled: true)
+                SpaceChecks.check("\(steps) random steps keep the right pages on screen, in place, nothing left over",
+                    problems.isEmpty, problems.prefix(5).joined(separator: " | "))
+            }))
+            at(2.5) {
+                // Seed 77 found it: a ⌃Tab cycle begun in one space, then
+                // another space in front: ⌃Tab must stay in the new space.
+                controller.stepRecentTabs()
+                controller.selectSpace(other, animated: false)
+                controller.stepRecentTabs()
+                SpaceChecks.check("⌃Tab after a space switch stays in that space",
+                    controller.activeTabID.map { id in controller.activeSpace.tabs.contains { $0.id == id } } ?? true)
+                controller.endRecentTabsCycle()
+                controller.selectSpace(home, animated: false)
+                if let stray = controller.spaces.first(where: { $0.id == other })?.tabs.first?.id {
+                    controller.activateTab(stray)
+                    SpaceChecks.check("going to another space's tab brings that space", controller.activeSpaceID == other && controller.activeTabID == stray)
+                    controller.selectSpace(home, animated: false)
+                }
+            }
+            at(3) { SpaceChecks.sequence(walk) }
+
+            // Picture in picture across switches.
+            let video = "data:text/html,<title>pip</title><canvas id=c width=64 height=36></canvas><video id=v></video><script>"
+                + "navigator.mediaSession.setActionHandler('enterpictureinpicture', () => document.title = 'AUTO ' + (++window.n || (window.n = 1)));"
+                + "const c = document.getElementById('c'), x = c.getContext('2d');"
+                + "setInterval(() => { x.fillStyle = 'rgb(' + Math.floor(Math.random()*255) + ',90,140)'; x.fillRect(0,0,64,36); }, 50);"
+                + "document.getElementById('v').srcObject = c.captureStream(20);</script>"
+            var pip: UUID?
+            let start = 3 + 220 * 0.13 + 2.5
+            func pipTitle() -> String { pip.flatMap { controller.liveTabs[$0]?.title } ?? "-" }
+            at(start) {
+                controller.selectSpace(home, animated: false)
+                controller.newTab(url: video)
+                pip = controller.activeTabID
+            }
+            // Waits for a condition (up to |limit| s), then goes on: the
+            // page's answers come later when the Mac is busy.
+            func when(_ limit: Double, _ ok: @escaping () -> Bool, _ then: @escaping (Bool) -> Void) {
+                if ok() || limit <= 0 { return then(ok()) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { when(limit - 0.1, ok, then) }
+            }
+            at(start + 1.5) {
+                controller.activeTab?.executeJavaScript(withUserGesture: "document.getElementById('v').play().then(() => document.title = 'playing')")
+                when(5, { pipTitle() == "playing" }) { ok in
+                    SpaceChecks.check("the video plays", ok, pipTitle())
+                    controller.newTab(url: page("Away"))
+                    when(5, { pipTitle().hasPrefix("AUTO") }) { ok in
+                        SpaceChecks.check("leaving it floats it (the site's own picture in picture)", ok, pipTitle())
+                        if let pip { controller.activateTab(pip) }
+                    }
+                }
+            }
+            at(start + 13) {
+                verify("back on the video", settled: true)
+                // Back and forth quickly: nothing breaks, the tab in front is right.
+                for _ in 0..<6 {
+                    controller.stepRecentTabs()
+                    controller.endRecentTabsCycle()
+                }
+            }
+            at(start + 14) {
+                verify("quick back and forth", settled: true)
+                SpaceChecks.check("quick switching keeps the right page in front", problems.isEmpty, problems.suffix(3).joined(separator: " | "))
+                if let pip, controller.activeTabID == pip { controller.newTab(url: page("Away 2")) }
+            }
+            at(start + 15) {
+                // "Back to tab": Chromium puts the hidden tab's window on screen,
+                // then the floating window closes.
+                guard let pip, let tab = controller.liveTabs[pip], let native = tab.nativeWindow else {
+                    return SpaceChecks.check("video tab still there", false)
+                }
+                native.orderFront(nil)
+                controller.tabFloatingWindowClosed(tab)
+                SpaceChecks.check("Back to tab from the floating window returns to the video", controller.activeTabID == pip)
+                verify("after Back to tab", settled: true)
+                controller.newTab(url: page("Away 3"))
+            }
+            at(start + 16) {
+                guard let pip, let tab = controller.liveTabs[pip] else { return }
+                let away = controller.activeTabID
+                controller.tabFloatingWindowClosed(tab)  // ×: its window stays hidden
+                SpaceChecks.check("× on the floating window leaves you where you are", controller.activeTabID == away && controller.activeTabID != pip)
+                controller.closeTab(pip)
+            }
+            at(start + 16.6) {
+                verify("video tab closed", settled: true)
+                SpaceChecks.check("closing the video tab leaves nothing of it", pip.map { controller.liveTabs[$0] == nil && controller.media[$0] == nil } ?? false
+                    && problems.isEmpty, problems.suffix(3).joined(separator: " | "))
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "extensions":
             // Chrome extensions: installed from a CRX (a local stand-in for the
             // Web Store), loaded after a restart (the step runs this twice).

@@ -82,6 +82,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     static let contentInset: CGFloat = 8
     // Unpinned tabs left alone this long go to the archive at launch.
     static let archiveAfter: TimeInterval = 12 * 3600
+    // Pages switch without fading (the stress checks: off screen a fade
+    // only ends with the next event, so every check would see one midway).
+    static var instantPages = false
 
     var window: NSWindow!
     var sidebarView: NSView?
@@ -110,6 +113,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var recentTabsMonitor: Any?
     var recentCycle: [UUID]?
     var recentCycleIndex = 0
+    var recentCycleSpace: UUID?
     var keepRecency = false
     var pinning = false
     var swipeMonitor: Any?
@@ -571,6 +575,13 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
             peek?.close()
             pictureInPictureForSwitch(from: activeTabID, to: id)
         }
+        // A tab of another space: that space comes forward first, so the
+        // space in front never has another space's tab as its own.
+        if let id, let home = spaceContaining(id)?.id, home != activeSpaceID {
+            selectSpace(home, animated: false)
+            if activeSpace.activeTabID != id { activateTab(id, transition: .none) }
+            return
+        }
         guard let id, let data = tabData(id) else {
             hideAllTabs()
             addressText = ""
@@ -703,7 +714,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
         }
         let transition = partner == nil ? transition : .none
         let wasShown = incoming.parent === window && incoming.isVisible && incoming.alphaValue > 0.99
-        let animate = transition != .none && !wasShown && !outgoing.isEmpty
+        let animate = transition != .none && !wasShown && !outgoing.isEmpty && !Self.instantPages
         if incoming.parent !== window { window.addChildWindow(incoming, ordered: .above) }
 
         guard animate else {

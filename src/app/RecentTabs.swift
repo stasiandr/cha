@@ -32,9 +32,12 @@ extension BrowserController {
 
     /// One press of Tab with ⌃ held.
     func stepRecentTabs(backwards: Bool = false) {
-        if recentCycle == nil {
+        // A cycle belongs to its space: another space (⌃2, ⌘⇧T bringing a
+        // tab back elsewhere) starts a new one.
+        if recentCycle == nil || recentCycleSpace != activeSpaceID {
             recentCycle = recentTabs
             recentCycleIndex = 0
+            recentCycleSpace = activeSpaceID
         }
         guard let cycle = recentCycle, cycle.count > 1 else { return }
         recentCycleIndex = (recentCycleIndex + (backwards ? -1 : 1) + cycle.count) % cycle.count

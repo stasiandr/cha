@@ -250,6 +250,13 @@ else
   if [ "$sync_ok" != 1 ]; then echo "sync FAILED"; failed=$((failed + 1)); fi
 fi
 
+step "Tab flows: hundreds of random switches, opens, closes, splits; picture in picture across them"
+run_scenario flows 100; code=$?
+grep -E 'CHECK |FLOWS seed' build/check/flows.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/flows.log; then
+  echo "flows FAILED (CHA_SEED=<seed above> replays it)"; failed=$((failed + 1))
+fi
+
 step "Split View: two tabs side by side"
 run_scenario split 30; code=$?
 grep -E 'CHECK ' build/check/split.log | sed 's/^.*cha\[[^]]*\] //'
