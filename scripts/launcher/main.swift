@@ -262,12 +262,28 @@ final class Launcher: NSObject, NSApplicationDelegate {
     /// Through LaunchServices, like a click in the Dock: it switches to the
     /// desktop or full screen cha is on and isn't refused the way
     /// NSRunningApplication.activate() is for an app that isn't frontmost.
+    ///
+    /// Since macOS 14 an app is brought forward only when the active one
+    /// hands it the activation. hop hands it to this launcher, so the
+    /// launcher takes it and hands it on to cha; without that macOS refused
+    /// and cha stayed behind (seen from hop, 2026-11-25).
     func bringForward(_ running: NSRunningApplication) {
+        passActivation()
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: running.bundleURL ?? chaApp, configuration: configuration) { _, _ in
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+            DispatchQueue.main.async {
+                if #available(macOS 14.0, *) { running.activate(from: .current, options: []) } else { running.activate() }
+                NSApp.terminate(nil)
+            }
         }
+    }
+
+    /// Takes the activation the opener handed over and hands it to cha.
+    func passActivation() {
+        guard !headless, #available(macOS 14.0, *) else { return }
+        NSApp.activate()
+        NSApp.yieldActivation(toApplicationWithBundleIdentifier: chaBundleID)
     }
 
     func launchCha() {
@@ -276,6 +292,7 @@ final class Launcher: NSObject, NSApplicationDelegate {
         configuration.createsNewApplicationInstance = passedEnvironment["CHA_PROFILE"] != nil
         configuration.environment = passedEnvironment
         note("opening \(chaApp.path)")
+        if configuration.activates { passActivation() }
         NSWorkspace.shared.openApplication(at: chaApp, configuration: configuration) { _, error in
             DispatchQueue.main.async {
                 if let error {
