@@ -474,12 +474,23 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     }
 
     // Activated with no window on screen (hop, the Dock, ⌘-Tab): show it.
+    // Activated with the window on another desktop (cha in full screen, the
+    // user on another desktop): go there. macOS follows the key window, which
+    // is often the page's own window, and that one, a transient child, never
+    // took it there: cha came forward with nothing of it on screen (seen from
+    // hop and the Dock, 2026-11-25).
     func installReopen() {
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self, !self.isQuitting, let window = self.window else { return }
-            if !window.isVisible || window.isMiniaturized { self.showMainWindow() }
+            if !window.isVisible || window.isMiniaturized {
+                self.showMainWindow()
+            } else if !window.isOnActiveSpace {
+                Diagnostics.tabLog("activated on another desktop: going to cha's window")
+                window.makeKeyAndOrderFront(nil)
+                self.activeTab?.focus()
+            }
         }
     }
 
