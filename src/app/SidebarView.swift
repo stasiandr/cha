@@ -185,6 +185,17 @@ struct TabIcon: View {
             }
         }
         .frame(width: size, height: size)
+        .overlay(alignment: .bottomTrailing) {
+            if controller.claudeTabs.contains(tab.id) {
+                // Claude is working in this tab (Claude.swift).
+                Image(systemName: "sparkle")
+                    .font(.system(size: max(8, size * 0.62), weight: .bold))
+                    .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
+                    .shadow(color: .black.opacity(0.25), radius: 0.5)
+                    .offset(x: size * 0.22, y: size * 0.22)
+                    .help("Claude is working in this tab")
+            }
+        }
     }
 }
 

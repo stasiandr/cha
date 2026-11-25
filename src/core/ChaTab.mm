@@ -83,6 +83,44 @@ class CaptureObserver : public CefDevToolsMessageObserver {
   IMPLEMENT_REFCOUNTING(CaptureObserver);
 };
 
+// One DevTools method sent as raw JSON with an id of cha's own: its answer
+// (the result object as JSON, or the error's message), then the observer goes.
+class MethodObserver : public CefDevToolsMessageObserver {
+ public:
+  MethodObserver(int id, void (^done)(NSData*, NSString*)) : id_(id), done_(done) {}
+  void OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int message_id, bool success,
+                              const void* result, size_t size) override {
+    if (message_id != id_ || !done_) {
+      return;
+    }
+    NSData* json = [NSData dataWithBytes:result length:size];
+    NSString* error = nil;
+    if (!success) {
+      NSDictionary* body = [NSJSONSerialization JSONObjectWithData:json options:0 error:nil];
+      id message = [body isKindOfClass:NSDictionary.class] ? body[@"message"] : nil;
+      error = [message isKindOfClass:NSString.class] ? message : @"DevTools method failed";
+      json = nil;
+    }
+    Finish(json, error);
+  }
+  void Finish(NSData* json, NSString* error) {
+    auto done = done_;
+    done_ = nil;
+    registration = nullptr;  // Ends this observer.
+    if (done) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        done(json, error);
+      });
+    }
+  }
+  CefRefPtr<CefRegistration> registration;
+
+ private:
+  int id_;
+  void (^done_)(NSData*, NSString*);
+  IMPLEMENT_REFCOUNTING(MethodObserver);
+};
+
 NSString* ToNSString(const CefString& value) {
   return [NSString stringWithUTF8String:value.ToString().c_str()];
 }
@@ -645,6 +683,18 @@ class TabHost : public CefClient,
     tab.currentURL = ToNSString(url);
     [tab cefChanged];
   }
+  // Chrome style would take the tab's own window to full screen; it is a
+  // child of cha's window and can't, so the content only filled the page
+  // area. cha's window goes full screen instead (BrowserController).
+  void OnFullscreenModeChange(CefRefPtr<CefBrowser>, bool fullscreen) override {
+    ChaTab* tab = tab_;
+    if (gTabLog) gTabLog([NSString stringWithFormat:@"page full screen %d: %@", fullscreen, tab.currentURL]);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if ([tab.delegate respondsToSelector:@selector(tab:pageFullscreen:)]) {
+        [tab.delegate tab:tab pageFullscreen:fullscreen];
+      }
+    });
+  }
   void OnMediaAccessChange(CefRefPtr<CefBrowser>, bool video, bool audio) override {
     ChaTab* tab = tab_;
     if (gTabLog) gTabLog([NSString stringWithFormat:@"camera %d microphone %d: %@", video, audio, tab.currentURL]);
@@ -990,6 +1040,31 @@ static NSString* const kSelectionMarker = @"__cha_selection__";
   if (observer->id == 0) {
     observer->registration = nullptr;
     completion(nil);
+  }
+}
+
+- (void)callDevToolsMethod:(NSString*)method
+                    params:(NSDictionary*)params
+                completion:(void (^)(NSData* _Nullable, NSString* _Nullable))completion {
+  auto browser = _host ? _host->browser() : nullptr;
+  if (!browser) {
+    completion(nil, @"the tab has no page loaded");
+    return;
+  }
+  // Ids of cha's own, far above the ones ExecuteDevToolsMethod hands out.
+  static int next = 1 << 24;
+  int messageID = ++next;
+  NSDictionary* message = @{@"id" : @(messageID), @"method" : method, @"params" : params ?: @{}};
+  NSData* data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
+  if (!data) {
+    completion(nil, @"the parameters are not JSON");
+    return;
+  }
+  auto host = browser->GetHost();
+  CefRefPtr<MethodObserver> observer = new MethodObserver(messageID, completion);
+  observer->registration = host->AddDevToolsMessageObserver(observer);
+  if (!host->SendDevToolsMessage(data.bytes, data.length)) {
+    observer->Finish(nil, @"DevTools did not take the message");
   }
 }
 

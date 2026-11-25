@@ -2004,6 +2004,22 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "claude":
+            // scripts/claude-check.py drives this run from outside, through
+            // cha-mcp, as Claude Code does. Inside: a picture of the sidebar
+            // the first time Claude works in a tab (its sparkle).
+            func watch() {
+                guard controller.claudeTabs.isEmpty else {
+                    at(0.5) {
+                        MainActor.assumeIsolated { shot("claude-sparkle") }
+                        NSLog("CLAUDE sparkle shown on %d tab(s)", controller.claudeTabs.count)
+                    }
+                    return
+                }
+                at(0.2, watch)
+            }
+            watch()
+
         default:
             break
         }

@@ -59,12 +59,15 @@ final class Launcher: NSObject, ChaEngineDelegate {
         URLOpener.shared.install()
         URLOpener.shared.controller = controller
         controller.startCalendar()
+        ClaudeServer.shared.controller = controller
+        ClaudeServer.shared.start()
         if let scenario = ProcessInfo.processInfo.environment["CHA_TEST"] {
             TestScenarios.run(scenario, controller: controller)
         }
     }
 
     func engineWillQuit() {
+        ClaudeServer.shared.stop()
         guard let controller else {
             ChaEngine.shared.quit()
             return

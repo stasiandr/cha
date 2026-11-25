@@ -113,6 +113,36 @@ Today's tabs go to the archive on Clear, on ⌘W, or after 12 hours unseen; the
 archive (bottom left) and the command bar bring them back. Drag the sidebar's
 right edge to resize it.
 
+## Claude
+
+Claude Code drives cha's tabs the way it drives Chrome through Claude in
+Chrome, with cha's own MCP server instead of an extension. cha ▸ Claude ▸
+Connect Claude Code… runs `claude mcp add --scope user cha …` once; new
+Claude Code sessions (the terminal and the Claude app's Code tab) then have
+`mcp__cha__*` tools: `tabs` (spaces and their tabs), `open_tab`,
+`select_tab`, `close_tab`, `navigate`, `get_page_text`, `read_page` (an
+outline with refs such as `ref_12`), `find`, `click` (a ref, or x/y read off
+a screenshot), `drag`, `hover`, `type`, `press_key`, `scroll`, `screenshot`
+(in CSS pixels) and `javascript` (a returned promise is awaited).
+
+- cha listens on `claude.sock` in its folder, which only you can open; there
+  is no network port. `cha-mcp` next to it is what Claude starts: it joins
+  the socket, and while cha is not running it answers Claude's handshake
+  itself, opening cha (in the background) only on the first tool call.
+- Tabs Claude opens go to the top of today's tabs in the background, so the
+  tab in front stays yours; calls without a tab id act on the tab that
+  session last used. A sparkle on a tab's icon shows Claude working in it.
+- The secret space is never listed or reachable. cha ▸ Claude ▸ Let Claude
+  Use cha turns it all off.
+- `scripts/check.sh` has a step that speaks MCP through `cha-mcp` against a
+  headless cha (`scripts/claude-check.py`), as Claude Code does.
+- The same tools test real sites: `node scripts/sites/run.mjs media`
+  (every codec and container, MSE, HLS, EME on local files from
+  `scripts/sites/make-fixtures.sh`), `… sites` (YouTube, Twitch, Widevine
+  DRM, PiP, WebGL/WebGPU, WebRTC…), `… features`, `… fullscreen`. Results
+  and pictures go to `build/sites/out`; what they found is in
+  [docs/sites.md](docs/sites.md).
+
 ## Verification codes
 
 Chromium's password manager fills logins, but it has no place for TOTP, so the

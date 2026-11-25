@@ -30,6 +30,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)tabFloatingWindowClosed:(ChaTab*)tab NS_SWIFT_NAME(tabFloatingWindowClosed(_:));
 // A new document started loading in the main frame.
 - (void)tabDidStartLoad:(ChaTab*)tab NS_SWIFT_NAME(tabDidStartLoad(_:));
+// The page entered or left full screen (a video's ⛶ button, F on YouTube,
+// Esc): the app gives it the whole screen and takes it back.
+- (void)tab:(ChaTab*)tab pageFullscreen:(BOOL)fullscreen NS_SWIFT_NAME(tab(_:pageFullscreen:));
 // A page script of cha's own sent a line back (console "__cha_app__ …").
 - (void)tab:(ChaTab*)tab didSendMessage:(NSString*)message NS_SWIFT_NAME(tab(_:didSendMessage:));
 // Find in page: |count| matches, the |active|-th selected (1-based).
@@ -74,6 +77,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) BOOL audioMuted;
 // A picture of what the page shows now (PNG), or nil.
 - (void)captureVisiblePage:(void (^)(NSData* _Nullable png))completion;
+// A Chrome DevTools Protocol method on this tab's page (Runtime.evaluate,
+// Input.dispatchKeyEvent, Page.captureScreenshot…): |completion| gets the
+// result object as JSON, or an error, on the main thread.
+- (void)callDevToolsMethod:(NSString*)method
+                    params:(nullable NSDictionary*)params
+                completion:(void (^)(NSData* _Nullable result, NSString* _Nullable error))completion
+    NS_SWIFT_NAME(callDevTools(_:params:completion:));
 // The mini player's buttons: "toggle" (play/pause), "nexttrack",
 // "previoustrack", in every frame of the page.
 - (void)sendMediaCommand:(NSString*)command;

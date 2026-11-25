@@ -22,6 +22,8 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var profiles: [ProfileData]
     @Published var favicons: [UUID: NSImage] = [:]
     @Published var loadingTabs: Set<UUID> = []
+    /// Tabs Claude worked on in the last few seconds (a sparkle on their row).
+    @Published var claudeTabs: Set<UUID> = []
     // What tabs play (Media.swift): the sidebar's speakers and mini player.
     @Published var media: [UUID: MediaState] = [:]
     @Published var lastPlayedTab: UUID?
@@ -48,6 +50,9 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     @Published var miniPlayerDismissed: Set<UUID> = []
     @Published var sidebarVisible = true
     @Published var isFullscreen = false
+    /// A page in full screen (its video's ⛶): which tab, and what to put
+    /// back when it leaves — the window's full screen, the sidebar.
+    var pageFullscreen: (tab: UUID, windowWasFullscreen: Bool, sidebarWasVisible: Bool)?
     @Published var addressText = ""
     @Published var focusAddressToken = 0  // Bumped to move focus to the field.
     @Published var commandQuery = "" { didSet { refreshCommandResults() } }
@@ -116,7 +121,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
     var swipe = SwipeTracker()
     private var appearanceObservation: NSKeyValueObservation?
     private(set) var liveTabs: [UUID: ChaTab] = [:]
-    private var tabIDsByObject: [ObjectIdentifier: UUID] = [:]
+    private(set) var tabIDsByObject: [ObjectIdentifier: UUID] = [:]
     // Pages visited, for the command bar; the address each tab last counted.
     let history = History()
     // Pages' text, for Search All Tabs (TabSearch.swift).
@@ -440,6 +445,13 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func windowDidExitFullScreen(_ notification: Notification) {
         isFullscreen = false
+        // The window left full screen (⌃⌘F, the green button) under a page
+        // that was in it: the page leaves too.
+        if let page = pageFullscreen {
+            pageFullscreen = nil
+            if page.sidebarWasVisible, !sidebarVisible { toggleSidebar(animated: false) }
+            liveTabs[page.tab]?.executeJavaScript("document.fullscreenElement && document.exitFullscreen()")
+        }
         updateTrafficLights()
         applyPageShape()
         layoutActiveTab()
@@ -581,6 +593,7 @@ final class BrowserController: NSObject, ObservableObject, NSWindowDelegate,
 
     func activateTab(_ id: UUID?, transition: PageTransition = .fade) {
         if id != activeTabID {
+            endPageFullscreen()
             closeFindBar()
             peek?.close()
             pictureInPictureForSwitch(from: activeTabID, to: id)

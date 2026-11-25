@@ -223,6 +223,32 @@ if [ "$code" -ne 0 ] || [ "$code2" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* fa
   echo "extensions FAILED"; failed=$((failed + 1))
 fi
 
+step "Claude: the MCP tools through cha-mcp, as Claude Code calls them"
+site="build/check/claude-site"; rm -rf "$site"; mkdir -p "$site"
+cat > "$site/index.html" <<'HTML'
+<!doctype html><title>Claude probe</title><h1>Probe page</h1>
+<label for=q>Your name</label> <input id=q placeholder="Type a name">
+<button onclick="document.getElementById('out').textContent='Hello, '+q.value; document.title='Greeted '+q.value">Greet</button>
+<p id=out></p><input type=checkbox id=c><label for=c>Remember me</label>
+<form action="/page2.html"><input name=s placeholder=search></form><a href="/page2.html">Second page</a>
+<p><input type=range id=r min=0 max=100 value=0 style="width:200px" aria-label="Volume">
+<span id=h onmouseenter="this.textContent='hovered'">hover me</span></p>
+<div style="height:3000px"></div><p>Bottom marker</p>
+HTML
+echo '<!doctype html><title>Page two</title><h1>Two</h1>' > "$site/page2.html"
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 -m http.server "$port" --bind 127.0.0.1 --directory "$site" >/dev/null 2>&1 &
+server=$!
+profile="$PWD/build/check/profile-claude"; rm -rf "$profile"; mkdir -p "$profile"
+CHA_HEADLESS=1 CHA_TEST=claude CHA_PROFILE="$profile" build/cha.app/Contents/MacOS/cha >build/check/claude.log 2>&1 &
+cha=$!
+for _ in $(seq 40); do [ -x "$profile/cha-mcp" ] && grep -q 'CLAUDE listening' build/check/claude.log && break; sleep 0.5; done
+timeout 120 python3 scripts/claude-check.py "$profile" "$port" | tee build/check/claude-check.log; code=${PIPESTATUS[0]}
+kill "$cha" "$server" 2>/dev/null; wait "$cha" 2>/dev/null
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/claude-check.log; then
+  echo "claude FAILED"; failed=$((failed + 1))
+fi
+
 step "Sync: two Macs (two profiles) through a local cloudsync server"
 server_bin="$HOME/personal/cloudsync/target/release/cloudsync-server"
 if [ ! -x "$server_bin" ]; then

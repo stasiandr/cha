@@ -28,6 +28,18 @@ enum MainMenu {
             title: "Extensions…", action: #selector(MenuTarget.extensions), keyEquivalent: "")
         extensions.target = target
         app.addItem(extensions)
+        let claude = NSMenu(title: "Claude")
+        let connect = NSMenuItem(
+            title: "Connect Claude Code…", action: #selector(MenuTarget.connectClaudeCode), keyEquivalent: "")
+        connect.target = target
+        claude.addItem(connect)
+        let allow = NSMenuItem(
+            title: "Let Claude Use cha", action: #selector(MenuTarget.toggleClaude), keyEquivalent: "")
+        allow.target = target
+        claude.addItem(allow)
+        let claudeItem = NSMenuItem(title: "Claude", action: nil, keyEquivalent: "")
+        claudeItem.submenu = claude
+        app.addItem(claudeItem)
         let sync = NSMenuItem(title: "Sync…", action: #selector(MenuTarget.syncWindow), keyEquivalent: "")
         sync.target = target
         app.addItem(sync)
@@ -226,11 +238,17 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
             item.state = isDefault ? .on : .off
             return !isDefault
         }
+        if item.action == #selector(toggleClaude) {
+            item.state = ClaudeServer.enabled ? .on : .off
+        }
         if item.action == #selector(toggleCalendar) {
             item.title = GoogleCalendar.shared.connected ? "Disconnect Google Calendar" : "Connect Google Calendar…"
         }
         return true
     }
+
+    @objc func connectClaudeCode() { ClaudeSetup.connectFromMenu() }
+    @objc func toggleClaude() { ClaudeServer.enabled.toggle() }
 
     @objc func toggleCalendar() {
         let calendar = GoogleCalendar.shared
