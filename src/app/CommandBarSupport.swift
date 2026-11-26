@@ -18,6 +18,7 @@ extension BrowserController {
             window.addChildWindow(panel, ordered: .above)
         }
         panel.makeKeyAndOrderFront(nil)
+        if mode != .tabs { InputSource.useASCII() }
         commandFocusToken += 1
         installCommandKeyMonitor()
     }
@@ -27,6 +28,7 @@ extension BrowserController {
             NSEvent.removeMonitor(monitor)
             commandKeyMonitor = nil
         }
+        InputSource.restore()
         guard let panel = commandPanel else { return }
         if panel.parent != nil { window.removeChildWindow(panel) }
         panel.orderOut(nil)

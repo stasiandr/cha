@@ -177,6 +177,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/co
   echo "commandbar FAILED"; failed=$((failed + 1))
 fi
 
+step "command bar: English layout while typing an address"
+run_scenario layout 30; code=$?
+grep -E 'CHECK ' build/check/layout.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/layout.log; then
+  echo "layout FAILED"; failed=$((failed + 1))
+fi
+
 step "Search All Tabs: titles, addresses, pages' text, every space"
 run_scenario tabsearch 30; code=$?
 grep -E 'CHECK ' build/check/tabsearch.log | sed 's/^.*cha\[[^]]*\] //'

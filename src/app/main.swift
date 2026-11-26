@@ -24,6 +24,9 @@ if Diagnostics.screenIndex != nil && !Diagnostics.loud {
     }
 }
 
+// Test runs never change the real keyboard layout (InputSource.swift).
+if ProcessInfo.processInfo.environment["CHA_TEST"] != nil { InputSource.useFake("com.apple.keylayout.Russian") }
+
 // Links and files from other apps (cha as the default browser).
 URLOpener.shared.install()
 

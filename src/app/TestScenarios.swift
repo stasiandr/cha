@@ -964,6 +964,39 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "layout":
+            // ⌘T switches the keyboard to English and gives the layout back
+            // on closing; a layout picked by hand meanwhile stays; Search
+            // All Tabs keeps it. (The checks' fake layouts: never the real.)
+            let russian = "com.apple.keylayout.Russian", abc = "com.apple.keylayout.ABC"
+            at(1) {
+                controller.openCommandBar(mode: .newTab)
+                SpaceChecks.check("⌘T types in English", InputSource.current() == abc, InputSource.current() ?? "-")
+                controller.closeCommandBar()
+                SpaceChecks.check("closed, the layout is given back", InputSource.current() == russian, InputSource.current() ?? "-")
+                controller.closeCommandBar()
+                SpaceChecks.check("closing twice changes nothing", InputSource.current() == russian)
+                controller.openCommandBar(mode: .current)
+                InputSource.select(russian)  // switched back by hand to type a Russian search
+                controller.closeCommandBar()
+                SpaceChecks.check("a layout picked by hand stays", InputSource.current() == russian)
+                InputSource.select("com.apple.keylayout.German")
+                controller.openCommandBar(mode: .newTab)
+                InputSource.select("com.apple.keylayout.Ukrainian")
+                controller.closeCommandBar()
+                SpaceChecks.check("whichever it is", InputSource.current() == "com.apple.keylayout.Ukrainian")
+                InputSource.select(russian)
+                controller.openCommandBar(mode: .tabs)
+                SpaceChecks.check("Search All Tabs keeps the layout", InputSource.current() == russian)
+                controller.closeCommandBar()
+                InputSource.select(abc)
+                controller.openCommandBar(mode: .newTab)
+                controller.closeCommandBar()
+                SpaceChecks.check("already English: left alone", InputSource.current() == abc)
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "commandbar":
             // The command bar with more results than fit: the field stays
             // in view, at most commandMaxRows rows, the search still there;
