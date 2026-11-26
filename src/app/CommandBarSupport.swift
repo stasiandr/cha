@@ -53,21 +53,50 @@ extension BrowserController {
     }
 
     // One size for the panel, whatever the results: room for the field and
-    // six rows, the card at its top and clear (click-through) below it. It
-    // used to be resized to every new result count, which flickered. The
-    // field sits in the middle of the page, a little above centre, as Arc's.
-    static let commandWidth: CGFloat = 620
+    // `commandMaxRows` rows, the card at its top and clear (click-through)
+    // below it. It used to be resized to every new result count, which
+    // flickered. The field sits in the middle of the page, a little above
+    // centre, as Arc's. Around the card, room for all of its shadow: with
+    // too little, the panel's edge cut the shadow into a dark rectangle.
+    static let commandWidth: CGFloat = 596  // The card's.
     static let commandFieldHeight: CGFloat = 58
-    static let commandHeight: CGFloat = commandFieldHeight + 6 * 44 + 13 + 24
+    static let commandRowHeight: CGFloat = 44
+    /// More results than fit pushed the field out of the panel's top.
+    static let commandMaxRows = 8
+    static let commandShadowMargin: CGFloat = 44
+    static let commandHeight: CGFloat =
+        commandFieldHeight + CGFloat(commandMaxRows) * commandRowHeight + 13 + 2 * commandShadowMargin
 
     var commandPanelFrame: NSRect {
         let content = contentScreenRect
-        let width = min(Self.commandWidth, content.width - 40)
+        let margin = Self.commandShadowMargin
+        let width = min(Self.commandWidth, content.width - 40) + 2 * margin
         let fieldCentre = content.midY + content.height * 0.08
-        let top = fieldCentre + Self.commandFieldHeight / 2 + 12  // 12: room for the shadow.
+        let top = fieldCentre + Self.commandFieldHeight / 2 + margin
         return NSRect(
             x: content.midX - width / 2, y: top - Self.commandHeight,
             width: width, height: Self.commandHeight)
+    }
+
+    /// At most `commandMaxRows`: pages visited before go first, then
+    /// archived tabs, open tabs, commands; the first row (what Return opens)
+    /// and the search stay.
+    static func fitting(_ results: [CommandResult]) -> [CommandResult] {
+        var results = results
+        let drops: [(CommandResult) -> Bool] = [
+            { if case .history = $0 { return true }; return false },
+            { if case .archived = $0 { return true }; return false },
+            { if case .tab = $0 { return true }; if case .found = $0 { return true }; return false },
+            { if case .command = $0 { return true }; return false },
+        ]
+        for drop in drops {
+            while results.count > commandMaxRows,
+                let index = results.indices.dropFirst().last(where: { drop(results[$0]) })
+            {
+                results.remove(at: index)
+            }
+        }
+        return Array(results.prefix(commandMaxRows))
     }
 
     private func installCommandKeyMonitor() {
@@ -103,7 +132,7 @@ extension BrowserController {
         var results: [CommandResult] = []
 
         if commandMode == .tabs {
-            commandResults = tabSearchResults(query)
+            commandResults = Self.fitting(tabSearchResults(query))
             commandSelection = min(commandSelection, max(commandResults.count - 1, 0))
             return
         }
@@ -189,8 +218,8 @@ extension BrowserController {
             for command in otherCommands { results.append(.command(command)) }
         }
 
-        commandResults = results
-        commandSelection = min(commandSelection, max(results.count - 1, 0))
+        commandResults = Self.fitting(results)
+        commandSelection = min(commandSelection, max(commandResults.count - 1, 0))
     }
 
     // An open tab whose address starts with the query stays the first choice.

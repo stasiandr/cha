@@ -964,6 +964,33 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "commandbar":
+            // The command bar with more results than fit: the field stays
+            // in view, at most commandMaxRows rows, the search still there;
+            // pictures of it for the shadow (build/shots/commandbar-*.png).
+            at(1) {
+                for n in 1...20 {
+                    controller.history.visit("https://www.youtube.com/watch?v=\(n)", title: "YouTube video \(n)", in: controller.activeSpaceID)
+                }
+                controller.openCommandBar(mode: .newTab)
+            }
+            at(2) {
+                controller.commandQuery = "you"
+            }
+            at(3) {
+                let results = controller.commandResults
+                SpaceChecks.check("many results are cut to what fits", results.count == BrowserController.commandMaxRows, "\(results.count)")
+                SpaceChecks.check("the search stays among them", results.contains { if case .search = $0 { return true }; return false })
+                let panel = controller.commandPanel
+                let fits = (panel?.contentView?.fittingSize.height ?? .infinity) <= (panel?.frame.height ?? 0) + 0.5
+                SpaceChecks.check("the card fits in its panel, field and all", fits,
+                    "\(panel?.contentView?.fittingSize ?? .zero) in \(panel?.frame.size ?? .zero)")
+                if let panel { TestScenarios.shotWindow(panel, "commandbar-many") }
+                controller.closeCommandBar()
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "tidy":
             // Arc Max's Tidy Titles on this Mac's own model. Skipped (not
             // passed) where the model is missing.
