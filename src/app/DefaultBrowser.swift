@@ -86,8 +86,12 @@ final class URLOpener: NSObject {
         // A single file comes as the descriptor itself, several as a list.
         let items = count > 0 ? (1...count).compactMap { list.atIndex($0) } : [list]
         for item in items {
-            if let file = item.coerce(toDescriptorType: typeFileURL)?.stringValue {
-                open(Self.target(forFile: file))
+            // fileURLValue, not the descriptor's string: that came out as an
+            // old-style "Macintosh HD:Users:…" path, which no page loads
+            // (every file from Finder opened as nothing, 2026-11-27).
+            if let file = item.fileURLValue ?? item.coerce(toDescriptorType: typeFileURL)?.fileURLValue {
+                Diagnostics.linkLog("file from Finder: \(file.pathExtension)")
+                open(Self.target(forFile: file.absoluteString))
             }
         }
     }

@@ -184,6 +184,13 @@ if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/la
   echo "layout FAILED"; failed=$((failed + 1))
 fi
 
+step "files from Finder: .html, .svg, .webloc"
+run_scenario openfile 30; code=$?
+grep -E 'CHECK ' build/check/openfile.log | sed 's/^.*cha\[[^]]*\] //'
+if [ "$code" -ne 0 ] || ! grep -q 'CHECKS passed=[0-9]* failed=0' build/check/openfile.log; then
+  echo "openfile FAILED"; failed=$((failed + 1))
+fi
+
 step "Search All Tabs: titles, addresses, pages' text, every space"
 run_scenario tabsearch 30; code=$?
 grep -E 'CHECK ' build/check/tabsearch.log | sed 's/^.*cha\[[^]]*\] //'

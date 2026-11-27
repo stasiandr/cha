@@ -1640,6 +1640,51 @@ enum TestScenarios {
                 NSApp.terminate(nil)
             }
 
+        case "openfile":
+            // Files from Finder ("Open With", a double click), as the
+            // open-documents Apple event delivers them: the page is the file.
+            let dir = Persistence.directory.appendingPathComponent("files", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let html = dir.appendingPathComponent("report page.html")
+            try? "<title>Local report</title><p>hello from a file</p>".write(to: html, atomically: true, encoding: .utf8)
+            let svg = dir.appendingPathComponent("pic.svg")
+            try? "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><title>Pic</title></svg>".write(to: svg, atomically: true, encoding: .utf8)
+            let webloc = dir.appendingPathComponent("link.webloc")
+            (["URL": "data:text/html,<title>Saved link</title>"] as NSDictionary).write(to: webloc, atomically: true)
+            func send(_ files: [URL]) {
+                let event = NSAppleEventDescriptor(
+                    eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEOpenDocuments),
+                    targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID),
+                    transactionID: AETransactionID(kAnyTransactionID))
+                let list = NSAppleEventDescriptor.list()
+                for (n, file) in files.enumerated() {
+                    list.insert(NSAppleEventDescriptor(fileURL: file), at: n + 1)
+                }
+                event.setParam(files.count == 1 ? NSAppleEventDescriptor(fileURL: files[0]) : list, forKeyword: keyDirectObject)
+                URLOpener.shared.handleOpenDocuments(event, withReplyEvent: NSAppleEventDescriptor.null())
+            }
+            at(1.5) { send([html]) }
+            at(4) {
+                let pages = LittleWindowController.open.map { "\($0.tab.title) \($0.tab.currentURL)" } + controller.activeSpace.tabs.map { "\($0.displayTitle) \($0.url)" }
+                NSLog("FILES after html: %@", pages.joined(separator: " | "))
+                let little = LittleWindowController.open.last
+                SpaceChecks.check("an .html file from Finder opens", little?.tab.currentURL.hasPrefix("file://") == true, little?.tab.currentURL ?? "-")
+                SpaceChecks.check("and its page is shown", little?.tab.title == "Local report", little?.tab.title ?? "-")
+                send([svg])
+            }
+            at(6.5) {
+                let little = LittleWindowController.open.last
+                SpaceChecks.check("so does an .svg", little?.tab.currentURL.hasSuffix("pic.svg") == true && little?.tab.title == "Pic",
+                    "\(little?.tab.title ?? "-") \(little?.tab.currentURL ?? "-")")
+                send([webloc])
+            }
+            at(9) {
+                let little = LittleWindowController.open.last
+                SpaceChecks.check("a .webloc opens where it points", little?.tab.title == "Saved link", little?.tab.title ?? "-")
+                NSLog("CHECKS passed=%d failed=%d", SpaceChecks.passed, SpaceChecks.failed)
+                NSApp.terminate(nil)
+            }
+
         case "openurl":
             // A link from another app, as the GetURL Apple event delivers it.
             at(1.5) {

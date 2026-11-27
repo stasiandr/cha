@@ -78,6 +78,14 @@
 				<string>com.apple.web-internet-location</string>
 				<string>public.svg-image</string>
 				<string>com.adobe.pdf</string>
+				<string>org.ietf.mhtml</string>
+				<string>public.png</string>
+				<string>public.jpeg</string>
+				<string>com.compuserve.gif</string>
+				<string>org.webmproject.webp</string>
+				<string>public.plain-text</string>
+				<string>public.json</string>
+				<string>public.xml</string>
 			</array>
 		</dict>
 	</array>
